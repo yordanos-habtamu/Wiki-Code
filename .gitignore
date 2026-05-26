@@ -22,6 +22,7 @@ venv/
 *.test
 *.out
 wikihub-cli
+wikihub_config.json
 
 # Node / Nuxt
 node_modules/

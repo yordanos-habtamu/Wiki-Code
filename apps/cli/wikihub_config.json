@@ -1,0 +1,25 @@
+{
+  "providers": {
+    "openrouter": {
+      "apiKey": "",
+      "defaultModel": "arcee-ai/trinity-large-thinking:free",
+      "status": "configured"
+    },
+    "gemini": {
+      "apiKey": "",
+      "status": "not_configured"
+    },
+    "deepseek": {
+      "apiKey": "",
+      "status": "not_configured"
+    },
+    "qwen": {
+      "apiKey": "",
+      "status": "not_configured"
+    }
+  },
+  "system": {
+    "defaultModel": "",
+    "tokenBudget": 100000
+  }
+}
