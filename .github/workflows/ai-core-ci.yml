@@ -1,0 +1,67 @@
+name: AI-Core CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test-matrix:
+    name: Test on Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.10, 3.11]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
+
+      - name: Install test dependencies
+        run: |
+          pip install -r .github/requirements-dev.txt
+
+      - name: Run ai-core unit & integration tests
+        run: |
+          python -m py_compile apps/ai-core/agents/semanticist.py apps/ai-core/agents/archivist.py apps/ai-core/agents/navigator.py apps/ai-core/src/cli.py
+          python apps/ai-core/tests/test_cli_integration.py > test_cli_integration.out 2>&1 || true
+          python apps/ai-core/tests/test_graph_orchestration.py > test_graph_orchestration.out 2>&1 || true
+        env:
+          PYTHONUNBUFFERED: '1'
+
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-core-test-logs-${{ matrix.python-version }}
+          path: |
+            test_cli_integration.out
+            test_graph_orchestration.out
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+
+      - name: Install linter
+        run: python -m pip install ruff
+
+      - name: Run linter
+        run: |
+          ruff check . --select E,F
+

@@ -1,0 +1,5 @@
+sqlglot>=30.8.0
+langgraph
+python-tree-sitter>=0.25.2
+ruff
+requests
