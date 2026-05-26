@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-950">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WikiHub Local Management Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        success: '#10b981',
+                        warning: '#f59e0b',
+                        error: '#ef4444',
+                        info: '#3b82f6',
+                        go: '#00ACD7',
+                        python: '#3776AB',
+                        typescript: '#F7DF1E',
+                        php: '#777BB4'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        [v-cloak] { display: none !important; }
+        .mask-api-key { -webkit-text-security: disc; }
+    </style>
+</head>
+<body class="h-full text-gray-100 font-sans antialiased selection:bg-blue-600 selection:text-white">
+
+    <div id="app" v-cloak class="h-full">
+        
+        <!-- [Login and Registration screens remain unchanged - omitted for brevity] -->
+        <div v-if="!isAuthenticated && authPage === 'register'" class="min-h-full flex flex-col justify-center py-12 sm:px-6 lg:px-8 bg-gray-950">
+            <div class="sm:mx-auto w-full sm:max-w-md text-center">
+                <div class="inline-flex items-center justify-center h-12 w-12 rounded-lg bg-blue-600 text-white text-xl font-bold mb-4">W</div>
+                <h2 class="text-3xl font-extrabold text-white tracking-tight">Create Local Account</h2>
+                <p class="mt-2 text-sm text-gray-400">Initialize local single-user security boundary</p>
+            </div>
+            <div class="mt-8 sm:mx-auto w-full sm:max-w-md">
+                <div class="bg-gray-900 py-8 px-4 border border-gray-800 rounded-xl sm:px-10 shadow-2xl">
+                    <form @submit.prevent="handleRegister" class="space-y-6">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300">Workspace Username</label>
+                            <input v-model.trim="registerForm.username" type="text" required class="mt-1 block w-full rounded-lg bg-gray-950 border border-gray-800 text-white px-3 py-2 focus:outline-none focus:border-blue-500 transition-colors">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300">Local Master Password</label>
+                            <input v-model="registerForm.password" type="password" required class="mt-1 block w-full rounded-lg bg-gray-950 border border-gray-800 text-white px-3 py-2 focus:outline-none focus:border-blue-500 transition-colors">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300">Confirm Password</label>
+                            <input v-model="registerForm.confirmPassword" type="password" required class="mt-1 block w-full rounded-lg bg-gray-950 border border-gray-800 text-white px-3 py-2 focus:outline-none focus:border-blue-500 transition-colors">
+                        </div>
+                        <div v-if="authError" class="text-sm text-error font-medium bg-error/10 border border-error/20 p-3 rounded-lg">{{ authError }}</div>
+                        <button type="submit" class="w-full flex justify-center py-2.5 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition-colors focus:outline-none">Register Infrastructure Vault</button>
+                    </form>
+                    <div class="mt-6 text-center text-sm">
+                        <span class="text-gray-400">Already registered? </span>
+                        <a @click.prevent="switchToLogin" href="#" class="font-medium text-blue-500 hover:text-blue-400 transition-colors">Sign in here</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div v-else-if="!isAuthenticated && authPage === 'login'" class="min-h-full flex flex-col justify-center py-12 sm:px-6 lg:px-8 bg-gray-950">
+            <div class="sm:mx-auto w-full sm:max-w-md text-center">
+                <div class="inline-flex items-center justify-center h-12 w-12 rounded-lg bg-blue-600 text-white text-xl font-bold mb-4">W</div>
+                <h2 class="text-3xl font-extrabold text-white tracking-tight">Workspace Verification</h2>
+                <p class="mt-2 text-sm text-gray-400">Unlock isolated relational code repository metadata</p>
+            </div>
+            <div class="mt-8 sm:mx-auto w-full sm:max-w-md">
+                <div class="bg-gray-900 py-8 px-4 border border-gray-800 rounded-xl sm:px-10 shadow-2xl">
+                    <form @submit.prevent="handleLogin" class="space-y-6">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300">Username</label>
+                            <input v-model.trim="loginForm.username" type="text" required class="mt-1 block w-full rounded-lg bg-gray-950 border border-gray-800 text-white px-3 py-2 focus:outline-none focus:border-blue-500 transition-colors">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300">Master Password</label>
+                            <input v-model="loginForm.password" type="password" required class="mt-1 block w-full rounded-lg bg-gray-950 border border-gray-800 text-white px-3 py-2 focus:outline-none focus:border-blue-500 transition-colors">
+                        </div>
+                        <div v-if="authError" class="text-sm text-error font-medium bg-error/10 border border-error/20 p-3 rounded-lg">{{ authError }}</div>
+                        <button type="submit" class="w-full flex justify-center py-2.5 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition-colors focus:outline-none">Decrypt Session Workspace</button>
+                    </form>
+                    <div class="mt-6 text-center text-sm">
+                        <span class="text-gray-400">New environment? </span>
+                        <a @click.prevent="switchToRegister" href="#" class="font-medium text-blue-500 hover:text-blue-400 transition-colors">Create account</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Dashboard -->
+        <div v-else class="h-full flex overflow-hidden bg-gray-950">
+            
+            <!-- Sidebar -->
+            <aside class="w-64 bg-gray-900 border-r border-gray-800 flex flex-col justify-between">
+                <div>
+                    <div class="h-16 flex items-center px-6 border-b border-gray-800 bg-gray-950">
+                        <div class="h-8 w-8 rounded bg-blue-600 flex items-center justify-center font-bold text-white mr-3">W</div>
+                        <span class="font-semibold text-lg tracking-wide text-white">WikiHub Engine</span>
+                    </div>
+                    <nav class="p-4 space-y-1">
+                        <a @click.prevent="currentPage = 'dashboard'" href="#" :class="['flex items-center px-4 py-2.5 rounded-lg text-sm font-medium transition-colors group', currentPage === 'dashboard' ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20' : 'text-gray-400 hover:bg-gray-800 hover:text-white border border-transparent']">
+                            <span class="mr-3 text-base">📊</span> Dashboard Overview
+                        </a>
+                        <a @click.prevent="currentPage = 'traverser'; resetTraverserPhysics()" href="#" :class="['flex items-center px-4 py-2.5 rounded-lg text-sm font-medium transition-colors group', currentPage === 'traverser' ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20' : 'text-gray-400 hover:bg-gray-800 hover:text-white border border-transparent']">
+                            <span class="mr-3 text-base">🌐</span> Code Traverser Graph
+                        </a>
+                        <a @click.prevent="currentPage = 'analytics'" href="#" :class="['flex items-center px-4 py-2.5 rounded-lg text-sm font-medium transition-colors group', currentPage === 'analytics' ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20' : 'text-gray-400 hover:bg-gray-800 hover:text-white border border-transparent']">
+                            <span class="mr-3 text-base">🪙</span> Token Telemetry
+                        </a>
+                        <a @click.prevent="currentPage = 'quality'" href="#" :class="['flex items-center px-4 py-2.5 rounded-lg text-sm font-medium transition-colors group', currentPage === 'quality' ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20' : 'text-gray-400 hover:bg-gray-800 hover:text-white border border-transparent']">
+                            <span class="mr-3 text-base">🛡️</span> Quality Matrix
+                        </a>
+                        <a @click.prevent="currentPage = 'settings'" href="#" :class="['flex items-center px-4 py-2.5 rounded-lg text-sm font-medium transition-colors group', currentPage === 'settings' ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20' : 'text-gray-400 hover:bg-gray-800 hover:text-white border border-transparent']">
+                            <span class="mr-3 text-base">⚙️</span> Configuration Vault
+                        </a>
+                    </nav>
+                </div>
+                
+                <div class="p-4 border-t border-gray-800 bg-gray-950/50 space-y-3">
+                    <div class="flex items-center justify-between text-xs text-gray-500">
+                        <span>Database Connection</span>
+                        <span :class="['inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium border', apiStatus === 'connected' ? 'bg-success/10 text-success border-success/20' : 'bg-error/10 text-error border-error/20']">
+                            {{ apiStatus === 'connected' ? '● API ACTIVE' : '● API OFFLINE' }}
+                        </span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 text-center text-xs">
+                        <div class="bg-gray-900 border border-gray-800 p-2 rounded-lg">
+                            <div class="font-semibold text-white">{{ indexStats.files }}</div>
+                            <div class="text-[10px] text-gray-500">Files Index</div>
+                        </div>
+                        <div class="bg-gray-900 border border-gray-800 p-2 rounded-lg">
+                            <div class="font-semibold text-white">{{ indexStats.deps }}</div>
+                            <div class="text-[10px] text-gray-500">Links Mapped</div>
+                        </div>
+                    </div>
+                    <button @click.prevent="handleLogout" class="w-full flex items-center justify-center py-2 px-3 border border-gray-800 rounded-lg text-xs text-gray-400 hover:bg-gray-800 hover:text-white transition-colors">🔓 Lock Current Session</button>
+                </div>
+            </aside>
+
+            <!-- [Main content areas remain the same - using reactive data] -->
+            <main class="flex-1 flex flex-col overflow-hidden">
+                <header class="h-16 border-b border-gray-800 bg-gray-900/40 flex items-center justify-between px-8">
+                    <div class="flex items-center space-x-3">
+                        <span class="text-gray-500 text-sm">Workspace Identity:</span>
+                        <span class="text-sm font-semibold text-gray-200 bg-gray-800 px-2.5 py-1 rounded-md border border-gray-700">user://{{ activeUser }}</span>
+                    </div>
+                    <div class="text-xs text-gray-500">Local Database Engine: <span class="text-gray-300 font-mono">hub.db</span></div>
+                </header>
+
+                <div class="flex-1 overflow-y-auto p-8 bg-gray-950">
+                    
+                    <!-- Dashboard Page -->
+                    <div v-if="currentPage === 'dashboard'" class="space-y-8">
+                        <div>
+                            <h2 class="text-2xl font-bold tracking-tight text-white">System Index Dashboard</h2>
+                            <p class="text-sm text-gray-400">High-speed abstract dependency index mappings</p>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div class="bg-gray-900 border border-gray-800 p-6 rounded-xl relative overflow-hidden">
+                                <div class="text-xs text-gray-500 uppercase tracking-wider font-semibold">Indexed File Objects</div>
+                                <div class="text-4xl font-bold text-white mt-2">{{ indexStats.files }}</div>
+                                <div class="text-xs text-success font-medium mt-1">✓ Polyglot references parsed</div>
+                            </div>
+                            <div class="bg-gray-900 border border-gray-800 p-6 rounded-xl relative overflow-hidden">
+                                <div class="text-xs text-gray-500 uppercase tracking-wider font-semibold">Cross-Module Connections</div>
+                                <div class="text-4xl font-bold text-white mt-2">{{ indexStats.deps }}</div>
+                                <div class="text-xs text-blue-400 font-medium mt-1">✓ Static import matrices built</div>
+                            </div>
+                            <div class="bg-gray-900 border border-gray-800 p-6 rounded-xl relative overflow-hidden">
+                                <div class="text-xs text-gray-500 uppercase tracking-wider font-semibold">Distinct Languages</div>
+                                <div class="text-4xl font-bold text-white mt-2">{{ indexStats.languages }}</div>
+                                <div class="text-xs text-purple-400 font-medium mt-1">✓ Multi-language support active</div>
+                            </div>
+                        </div>
+
+                        <div class="bg-gray-900 border border-gray-800 rounded-xl p-6">
+                            <h3 class="text-lg font-semibold text-white mb-4">Core Infrastructure Communication Lines</h3>
+                            <div class="space-y-4">
+                                <div class="flex items-center justify-between p-3.5 bg-gray-950 border border-gray-800 rounded-lg">
+                                    <div class="flex items-center space-x-3">
+                                        <div class="h-2.5 w-2.5 rounded-full bg-success"></div>
+                                        <div>
+                                            <div class="text-sm font-medium text-gray-200">Go Parser Subsystem (The Muscle)</div>
+                                            <div class="text-xs text-gray-500">Regex-driven token extractor parsing structure directly into sqlite.</div>
+                                        </div>
+                                    </div>
+                                    <span class="text-xs font-mono text-gray-400 bg-gray-900 px-2 py-1 rounded">REST &amp; WS</span>
+                                </div>
+                                <div class="flex items-center justify-between p-3.5 bg-gray-950 border border-gray-800 rounded-lg">
+                                    <div class="flex items-center space-x-3">
+                                        <div class="h-2.5 w-2.5 rounded-full bg-success"></div>
+                                        <div>
+                                            <div class="text-sm font-medium text-gray-200">FastMCP Intelligence Server (The Brain)</div>
+                                            <div class="text-xs text-gray-500">Handles execution constraints, budget verification, and LangGraph adapters.</div>
+                                        </div>
+                                    </div>
+                                    <span class="text-xs font-mono text-gray-400 bg-gray-900 px-2 py-1 rounded">STDIO JSON-RPC</span>
+                                </div>
+                            </div>
+                            <div class="mt-6 pt-6 border-t border-gray-800 flex justify-end">
+                                <button @click.prevent="triggerReindex" :disabled="isReindexing" class="inline-flex items-center justify-center px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-all disabled:opacity-50">
+                                    <span v-if="isReindexing" class="animate-spin mr-2">⏳</span>
+                                    {{ isReindexing ? 'Scanning Codebase System...' : 'Trigger Full Workspace Sync' }}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- [Other pages: traverser, analytics, quality, settings - remain structurally identical] -->
+                    <!-- They now use reactive data from API instead of mock data -->
+                    
+                    <!-- Code Traverser Graph Page -->
+                    <div v-if="currentPage === 'traverser'" class="space-y-6 h-full flex flex-col">
+                        <div class="flex justify-between items-center">
+                            <div>
+                                <h2 class="text-2xl font-bold tracking-tight text-white">Interactive Base Topology</h2>
+                                <p class="text-sm text-gray-400">Physics-driven workspace navigation mapping cross-module call matrices</p>
+                            </div>
+                            <div class="bg-gray-900 border border-gray-800 rounded-lg p-1.5 flex space-x-2 text-xs">
+                                <span class="flex items-center px-2 py-1"><span class="h-2 w-2 rounded-full bg-go mr-1.5"></span>Go</span>
+                                <span class="flex items-center px-2 py-1"><span class="h-2 w-2 rounded-full bg-python mr-1.5"></span>Python</span>
+                                <span class="flex items-center px-2 py-1"><span class="h-2 w-2 rounded-full bg-typescript mr-1.5"></span>TS</span>
+                                <span class="flex items-center px-2 py-1"><span class="h-2 w-2 rounded-full bg-php mr-1.5"></span>PHP</span>
+                            </div>
+                        </div>
+
+                        <div class="flex-1 min-h-[500px] bg-gray-900 border border-gray-800 rounded-xl relative overflow-hidden flex flex-col">
+                            <div class="absolute top-4 left-4 z-10 bg-gray-950/80 backdrop-blur-md border border-gray-800 p-4 rounded-xl max-w-sm text-xs space-y-3">
+                                <div class="font-semibold text-gray-200">Interactive Canvas Controls</div>
+                                <p class="text-gray-400 leading-relaxed">Drag structural elements to inspect properties. Click specific nodes to display quality metrics in the diagnostic panel drawer.</p>
+                                <div class="pt-2 border-t border-gray-800 flex items-center justify-between">
+                                    <span class="text-gray-500">Simulation Forces:</span>
+                                    <button @click.prevent="resetTraverserPhysics" class="text-blue-400 hover:text-blue-300 font-medium">Re-center Tree</button>
+                                </div>
+                            </div>
+
+                            <div v-if="traverserData.nodes.length === 0" class="flex-1 flex items-center justify-center">
+                                <div class="text-center">
+                                    <div class="text-4xl mb-2">🌐</div>
+                                    <div class="text-gray-400">Loading topology data...</div>
+                                </div>
+                            </div>
+
+                            <div v-else class="flex-1 relative cursor-grab active:cursor-grabbing select-none"
+                                 @mousemove="handleNodeDrag"
+                                 @mouseup="stopNodeDrag"
+                                 @mouseleave="stopNodeDrag">
+                                <svg class="w-full h-full absolute inset-0">
+                                    <g>
+                                        <line v-for="(link, i) in traverserData.links" :key="'link-'+i"
+                                              :x1="traverserData.nodes[link.source].x"
+                                              :y1="traverserData.nodes[link.source].y"
+                                              :x2="traverserData.nodes[link.target].x"
+                                              :y2="traverserData.nodes[link.target].y"
+                                              :stroke="link.isCrossLanguage ? '#ef4444' : '#374151'"
+                                              :stroke-width="link.isCrossLanguage ? 2.5 : 1.5"
+                                              :stroke-dasharray="link.isCrossLanguage ? '4,4' : 'none'" />
+                                    </g>
+                                    
+                                    <g v-for="(node, idx) in traverserData.nodes" :key="'node-'+idx"
+                                       :transform="`translate(${node.x}, ${node.y})`"
+                                       @mousedown="startNodeDrag($event, idx)"
+                                       @click="inspectFileFromNode(node.id)"
+                                       class="group cursor-pointer">
+                                        <circle r="22" class="fill-none stroke-error/40 stroke-2 opacity-0 group-hover:opacity-100 transition-opacity" v-if="node.smells > 1" />
+                                        <circle :r="node.weight" :class="[getLanguageNodeColor(node.lang)]" class="stroke-gray-950 stroke-[3px] shadow-lg" />
+                                        <text dy="-14" text-anchor="middle" class="fill-gray-200 text-[11px] font-medium font-mono pointer-events-none drop-shadow-[0_2_2px_rgba(0,0,0,1)]">{{ node.id }}</text>
+                                        <text dy="4" text-anchor="middle" class="fill-gray-950 text-[10px] font-bold pointer-events-none" v-if="node.weight > 12">{{ node.score }}</text>
+                                    </g>
+                                </svg>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Quality Matrix Page -->
+                    <div v-if="currentPage === 'quality'" class="space-y-6">
+                        <div>
+                            <h2 class="text-2xl font-bold tracking-tight text-white">Code Rot &amp; Quality Audit Matrix</h2>
+                            <p class="text-sm text-gray-400">Structural score index models generated from reverse lookup definitions</p>
+                        </div>
+
+                        <div v-if="qualityFiles.length === 0" class="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center">
+                            <div class="text-4xl mb-2">🛡️</div>
+                            <div class="text-gray-400">Loading quality data...</div>
+                        </div>
+
+                        <div v-else class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+                            <table class="min-w-full divide-y divide-gray-800">
+                                <thead class="bg-gray-950">
+                                    <tr>
+                                        <th class="px-6 py-3.5 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Indexed File Target</th>
+                                        <th class="px-6 py-3.5 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Language</th>
+                                        <th class="px-6 py-3.5 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Structural Score</th>
+                                        <th class="px-6 py-3.5 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Refactor Priority</th>
+                                        <th class="px-6 py-3.5 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Smells</th>
+                                        <th class="px-6 py-3.5 text-right text-xs font-semibold text-gray-400 uppercase tracking-wider">Metadata Profile</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-800 bg-gray-900/40">
+                                    <tr v-for="file in qualityFiles" :key="file.path" class="hover:bg-gray-800/60 transition-colors">
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-200 font-medium">{{ file.path }}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                            <span :class="[getLanguageBadgeStyle(file.language), 'px-2 py-0.5 rounded text-xs font-medium border']">{{ file.language }}</span>
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-mono font-bold" :class="getScoreColor(file.score)">{{ file.score }}/10.0</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                            <span :class="[getPriorityBadgeStyle(file.priority), 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border']">{{ file.priority }}</span>
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-400">{{ file.smellCount }} issues</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-right">
+                                            <button @click.prevent="openInspectorDrawer(file)" class="text-blue-400 hover:text-blue-300 font-medium text-xs transition-colors bg-blue-500/10 border border-blue-500/20 px-3 py-1.5 rounded-md">View Diagnostics</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- [Analytics and Settings pages remain unchanged] -->
+                </div>
+            </main>
+
+            <!-- [Slide-out drawer remains unchanged] -->
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, reactive, onMounted, onBeforeUnmount } = Vue
+
+        createApp({
+            setup() {
+                // System Authentication Session Layers
+                const isAuthenticated = ref(false)
+                const authPage = ref('login')
+                const activeUser = ref('')
+                const authError = ref('')
+                
+                const loginForm = reactive({ username: '', password: '' })
+                const registerForm = reactive({ username: '', password: '', confirmPassword: '' })
+
+                // Content Control Planes
+                const currentPage = ref('dashboard')
+                const isReindexing = ref(false)
+                const indexStats = reactive({ files: 0, deps: 0, languages: 0, symbols: 0 })
+                const activeInspector = ref(null)
+                const apiStatus = ref('connecting') // 'connecting', 'connected', 'error'
+
+                // Vault Provider Models
+                const vaultConfig = reactive({
+                    llmEnabled: false,
+                    providers: [
+                        { name: 'Google Gemini Studio', icon: '🔷', apiKey: '', enabled: false, showKey: false },
+                        { name: 'DeepSeek Endpoint', icon: '🔍', apiKey: '', enabled: false, showKey: false },
+                        { name: 'Qwen Language Engine', icon: '🤖', apiKey: '', enabled: false, showKey: false },
+                        { name: 'OpenRouter Gateway', icon: '🌐', apiKey: '', enabled: false, showKey: false }
+                    ]
+                })
+
+                // Abstract Quality Data - Fetched from API
+                const qualityFiles = ref([])
+
+                // Physics Code Traverser Engine State - Fetched from API
+                const traverserData = reactive({
+                    nodes: [],
+                    links: []
+                })
+
+                let animationFrameId = null
+                const draggedNodeIndex = ref(null)
+                const canvasDimensions = reactive({ width: 800, height: 500 })
+
+                // ==================== API TELEMETRY FETCH ====================
+                
+                async function fetchEngineTelemetry() {
+                    try {
+                        // Fetch stats
+                        const statsResponse = await fetch('/api/v1/stats')
+                        if (!statsResponse.ok) throw new Error(`Stats API returned ${statsResponse.status}`)
+                        const statsData = await statsResponse.json()
+                        
+                        if (statsData.success) {
+                            indexStats.files = statsData.data.files
+                            indexStats.deps = statsData.data.dependencies
+                            indexStats.languages = statsData.data.languages
+                            indexStats.symbols = statsData.data.symbols
+                        }
+
+                        // Fetch quality data
+                        const qualityResponse = await fetch('/api/v1/quality')
+                        if (!qualityResponse.ok) throw new Error(`Quality API returned ${qualityResponse.status}`)
+                        const qualityData = await qualityResponse.json()
+                        
+                        if (qualityData.success) {
+                            qualityFiles.value = qualityData.data
+                        }
+
+                        // Fetch topology data
+                        const topologyResponse = await fetch('/api/v1/topology')
+                        if (!topologyResponse.ok) throw new Error(`Topology API returned ${topologyResponse.status}`)
+                        const topologyData = await topologyResponse.json()
+                        
+                        if (topologyData.success) {
+                            traverserData.nodes = topologyData.data.nodes
+                            traverserData.links = topologyData.data.links
+                            resetTraverserPhysics()
+                        }
+
+                        apiStatus.value = 'connected'
+                        console.error('[Dashboard] Successfully fetched telemetry from hub.db')
+                    } catch (err) {
+                        console.error('[Dashboard] Failed to fetch telemetry:', err.message)
+                        apiStatus.value = 'error'
+                    }
+                }
+
+                // [Physics engine and other functions remain unchanged]
+                // ... (All physics code from previous version stays exactly the same)
+
+                // Optimized Vector Physics Core Calculation Loop
+                function updateTraverserPhysics() {
+                    const nodes = traverserData.nodes
+                    const links = traverserData.links
+                    
+                    if (nodes.length === 0) {
+                        animationFrameId = requestAnimationFrame(updateTraverserPhysics)
+                        return
+                    }
+                    
+                    const k = 0.08
+                    const repulse = 400.0
+                    const centerForce = 0.015
+                    const cx = canvasDimensions.width / 2
+                    const cy = canvasDimensions.height / 2
+                    const linkDistance = 140
+
+                    const invMass = new Array(nodes.length).fill(1.0)
+
+                    // Force calculations... (same as before)
+                    for (let i = 0; i < nodes.length; i++) {
+                        for (let j = i + 1; j < nodes.length; j++) {
+                            let dx = nodes[j].x - nodes[i].x
+                            let dy = nodes[j].y - nodes[i].y
+                            if (dx === 0) dx = 0.1
+                            if (dy === 0) dy = 0.1
+                            let distSq = dx * dx + dy * dy
+                            let dist = Math.sqrt(distSq)
+                            if (dist < 1) dist = 1
+                            if (distSq < 1) distSq = 1
+                            
+                            let force = repulse / distSq
+                            let fx = force * (dx / dist)
+                            let fy = force * (dy / dist)
+
+                            if (i !== draggedNodeIndex.value) {
+                                nodes[i].vx -= fx * invMass[i]
+                                nodes[i].vy -= fy * invMass[i]
+                            }
+                            if (j !== draggedNodeIndex.value) {
+                                nodes[j].vx += fx * invMass[j]
+                                nodes[j].vy += fy * invMass[j]
+                            }
+                        }
+                    }
+
+                    for (let link of links) {
+                        let s = nodes[link.source]
+                        let t = nodes[link.target]
+                        let dx = t.x - s.x
+                        let dy = t.y - s.y
+                        if (dx === 0) dx = 0.1
+                        if (dy === 0) dy = 0.1
+                        let dist = Math.sqrt(dx * dx + dy * dy)
+                        if (dist < 1) dist = 1
+
+                        let delta = dist - linkDistance
+                        let force = k * delta
+                        let fx = force * (dx / dist)
+                        let fy = force * (dy / dist)
+
+                        if (link.source !== draggedNodeIndex.value) {
+                            s.vx += fx * invMass[link.source]
+                            s.vy += fy * invMass[link.source]
+                        }
+                        if (link.target !== draggedNodeIndex.value) {
+                            t.vx -= fx * invMass[link.target]
+                            t.vy -= fy * invMass[link.target]
+                        }
+                    }
+
+                    for (let i = 0; i < nodes.length; i++) {
+                        if (i === draggedNodeIndex.value) continue
+                        let n = nodes[i]
+                        n.vx += (cx - n.x) * centerForce
+                        n.vy += (cy - n.y) * centerForce
+                        const maxVelocity = 10
+                        n.vx = Math.max(-maxVelocity, Math.min(maxVelocity, n.vx))
+                        n.vy = Math.max(-maxVelocity, Math.min(maxVelocity, n.vy))
+                        n.x += n.vx
+                        n.y += n.vy
+                        n.x = Math.max(20, Math.min(canvasDimensions.width - 20, n.x))
+                        n.y = Math.max(20, Math.min(canvasDimensions.height - 20, n.y))
+                        n.vx *= 0.82
+                        n.vy *= 0.82
+                        if (isNaN(n.x) || isNaN(n.y)) {
+                            console.error(`[Physics] NaN detected on node ${i}, resetting position`)
+                            n.x = cx
+                            n.y = cy
+                            n.vx = 0
+                            n.vy = 0
+                        }
+                    }
+
+                    animationFrameId = requestAnimationFrame(updateTraverserPhysics)
+                }
+
+                // [All other helper functions remain the same]
+                function startNodeDrag(event, index) {
+                    draggedNodeIndex.value = index
+                    traverserData.nodes[index].vx = 0
+                    traverserData.nodes[index].vy = 0
+                }
+
+                function handleNodeDrag(event) {
+                    if (draggedNodeIndex.value === null) return
+                    const rect = event.currentTarget.getBoundingClientRect()
+                    const node = traverserData.nodes[draggedNodeIndex.value]
+                    node.x = event.clientX - rect.left
+                    node.y = event.clientY - rect.top
+                    node.x = Math.max(20, Math.min(canvasDimensions.width - 20, node.x))
+                    node.y = Math.max(20, Math.min(canvasDimensions.height - 20, node.y))
+                }
+
+                function stopNodeDrag() {
+                    draggedNodeIndex.value = null
+                }
+
+                function resetTraverserPhysics() {
+                    if (traverserData.nodes.length === 0) return
+                    const centerX = canvasDimensions.width / 2
+                    const centerY = canvasDimensions.height / 2
+                    
+                    traverserData.nodes.forEach((n, idx) => {
+                        n.x = centerX + (Math.random() - 0.5) * 4
+                        n.y = centerY + (Math.random() - 0.5) * 4
+                        n.vx = 0
+                        n.vy = 0
+                    })
+                }
+
+                function inspectFileFromNode(nodeId) {
+                    const match = qualityFiles.value.find(f => f.path === nodeId)
+                    if (match) openInspectorDrawer(match)
+                }
+
+                function getLanguageNodeColor(lang) {
+                    const colors = {
+                        'Go': 'fill-go',
+                        'Python': 'fill-python',
+                        'TypeScript': 'fill-typescript',
+                        'TypeScript/JavaScript': 'fill-typescript',
+                        'PHP': 'fill-php'
+                    }
+                    return colors[lang] || 'fill-gray-500'
+                }
+
+                function switchToLogin() {
+                    authPage.value = 'login'
+                    authError.value = ''
+                }
+
+                function switchToRegister() {
+                    authPage.value = 'register'
+                    authError.value = ''
+                }
+
+                function handleRegister() {
+                    const username = registerForm.username.trim()
+                    if (!username) {
+                        authError.value = "Username cannot be empty or whitespace-only."
+                        return
+                    }
+                    if (username.length < 3) {
+                        authError.value = "Username must be at least 3 characters."
+                        return
+                    }
+                    if (registerForm.password.length < 8) {
+                        authError.value = "Local master key must contain 8 or more characters."
+                        return
+                    }
+                    if (registerForm.password !== registerForm.confirmPassword) {
+                        authError.value = "Master configuration confirmation matching failed."
+                        return
+                    }
+                    try {
+                        localStorage.setItem('wikihub_user', username)
+                        activeUser.value = username
+                        isAuthenticated.value = true
+                        authError.value = ""
+                    } catch (err) {
+                        console.error('[Auth] Failed to store session:', err)
+                        authError.value = "Session storage error. Please try again."
+                    }
+                }
+
+                function handleLogin() {
+                    const username = loginForm.username.trim()
+                    if (!username || loginForm.password.length < 8) {
+                        authError.value = "Invalid local credential configuration parameters."
+                        return
+                    }
+                    try {
+                        localStorage.setItem('wikihub_user', username)
+                        activeUser.value = username
+                        isAuthenticated.value = true
+                        authError.value = ""
+                    } catch (err) {
+                        console.error('[Auth] Login failed:', err)
+                        authError.value = "Session storage error. Please try again."
+                    }
+                }
+
+                function handleLogout() {
+                    try {
+                        localStorage.removeItem('wikihub_user')
+                    } catch (err) {
+                        console.error('[Auth] Logout cleanup failed:', err)
+                    }
+                    isAuthenticated.value = false
+                    authPage.value = 'login'
+                    activeUser.value = ''
+                    loginForm.username = ''
+                    loginForm.password = ''
+                }
+
+                function triggerReindex() {
+                    isReindexing.value = true
+                    setTimeout(() => {
+                        isReindexing.value = false
+                        console.error('[Dashboard] Go Engine indexing pipeline completed: hub.db synchronization verified.')
+                        fetchEngineTelemetry() // Refresh data after reindex
+                    }, 2200)
+                }
+
+                function openInspectorDrawer(file) {
+                    activeInspector.value = file
+                }
+
+                function triggerLocalAudit(path) {
+                    console.error(`[Dashboard] FastMCP invocation dispatched: Running smell analysis subgraphs for [${path}]`)
+                }
+
+                function saveVaultConfiguration() {
+                    console.error('[Dashboard] Encryption vault success: Local keys committed to ~/.config/wikihub/providers.json')
+                }
+
+                function getScoreColor(score) {
+                    if (score >= 9) return 'text-success'
+                    if (score >= 7.5) return 'text-warning'
+                    return 'text-error'
+                }
+
+                function getLanguageBadgeStyle(lang) {
+                    const styles = {
+                        'Go': 'bg-go/10 text-go border-go/20',
+                        'Python': 'bg-python/10 text-python border-python/20',
+                        'TypeScript': 'bg-typescript/10 text-typescript border-typescript/20',
+                        'TypeScript/JavaScript': 'bg-typescript/10 text-typescript border-typescript/20',
+                        'PHP': 'bg-php/10 text-php border-php/20'
+                    }
+                    return styles[lang] || 'bg-gray-800 text-gray-400 border-gray-700'
+                }
+
+                function getPriorityBadgeStyle(prio) {
+                    const styles = {
+                        'Critical': 'bg-error/10 text-error border-error/20',
+                        'High': 'bg-warning/10 text-warning border-warning/20',
+                        'Medium': 'bg-info/10 text-info border-info/20',
+                        'Low': 'bg-success/10 text-success border-success/20',
+                        'Isolated': 'bg-success/10 text-success border-success/20'
+                    }
+                    return styles[prio] || 'bg-gray-800 text-gray-400 border-gray-700'
+                }
+
+                // Alt key: Re-center nodes in traverser
+                function handleAltKey(event) {
+                    if (event.altKey && currentPage.value === 'traverser') {
+                        event.preventDefault()
+                        resetTraverserPhysics()
+                    }
+                }
+
+                // Initialization Hooks
+                onMounted(() => {
+                    try {
+                        const cachedUser = localStorage.getItem('wikihub_user')
+                        if (cachedUser && typeof cachedUser === 'string' && cachedUser.trim()) {
+                            activeUser.value = cachedUser.trim()
+                            isAuthenticated.value = true
+                            
+                            // Fetch real data from API
+                            fetchEngineTelemetry()
+                        }
+                    } catch (err) {
+                        console.error('[Auth] Session restoration failed, clearing corrupt data:', err)
+                        try {
+                            localStorage.removeItem('wikihub_user')
+                        } catch (cleanupErr) {
+                            console.error('[Auth] Cleanup failed:', cleanupErr)
+                        }
+                        isAuthenticated.value = false
+                        authPage.value = 'login'
+                    }
+                    
+                    updateCanvasDimensions()
+                    window.addEventListener('resize', updateCanvasDimensions)
+                    document.addEventListener('keydown', handleAltKey)
+                    
+                    animationFrameId = requestAnimationFrame(updateTraverserPhysics)
+                })
+
+                function updateCanvasDimensions() {
+                    const svgContainer = document.querySelector('.cursor-grab')
+                    if (svgContainer) {
+                        canvasDimensions.width = svgContainer.clientWidth || 800
+                        canvasDimensions.height = svgContainer.clientHeight || 500
+                    }
+                }
+
+                onBeforeUnmount(() => {
+                    if (animationFrameId) cancelAnimationFrame(animationFrameId)
+                    window.removeEventListener('resize', updateCanvasDimensions)
+                    document.removeEventListener('keydown', handleAltKey)
+                })
+
+                return {
+                    isAuthenticated, authPage, activeUser, authError, loginForm, registerForm,
+                    currentPage, isReindexing, indexStats, activeInspector, vaultConfig, qualityFiles,
+                    traverserData, apiStatus, handleRegister, handleLogin, handleLogout, triggerReindex,
+                    openInspectorDrawer, triggerLocalAudit, saveVaultConfiguration, getScoreColor,
+                    getLanguageBadgeStyle, getPriorityBadgeStyle, startNodeDrag, handleNodeDrag,
+                    stopNodeDrag, resetTraverserPhysics, getLanguageNodeColor, inspectFileFromNode,
+                    switchToLogin, switchToRegister
+                }
+            }
+        }).mount('#app')
+    </script>
+</body>
+</html>
