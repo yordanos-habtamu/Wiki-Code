@@ -144,6 +144,107 @@ def _resolve_project_id(query_params=None):
             return project_ids[0]
     return active_workspace.get('project_id')
 
+
+def _table_exists(cursor, table_name):
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name = ?", (table_name,))
+    return cursor.fetchone() is not None
+
+
+def _get_project_row(cursor, project_id):
+    if not project_id or not _table_exists(cursor, 'wiki_projects'):
+        return None
+    cursor.execute("SELECT id, name, repo_path FROM wiki_projects WHERE id = ?", (project_id,))
+    return cursor.fetchone()
+
+
+def _empty_stats():
+    return {
+        "files": 0,
+        "dependencies": 0,
+        "languages": 0,
+        "symbols": 0,
+        "files_with_issues": 0,
+        "token_usage": {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0},
+        "last_updated": datetime.now().isoformat()
+    }
+
+
+def _normalize_rel_path(path):
+    normalized = (path or '').replace('\\', '/')
+    while normalized.startswith('./'):
+        normalized = normalized[2:]
+    return normalized.lstrip('/')
+
+
+def _dependency_target_candidates(import_path, source_file):
+    """Map import strings from the Go scanner to likely repository file paths."""
+    raw = (import_path or '').replace('\\', '/').strip()
+    source_dir = os.path.dirname(_normalize_rel_path(source_file))
+    candidates = []
+
+    def add(value):
+        value = _normalize_rel_path(value)
+        if value and value not in candidates:
+            candidates.append(value)
+
+    add(raw)
+
+    if raw.startswith('.'):
+        joined = os.path.normpath(os.path.join(source_dir, raw)).replace('\\', '/')
+        add(joined)
+    elif '/' in raw:
+        add(raw)
+    else:
+        add(raw.replace('.', '/'))
+
+    module_path = raw.replace('.', '/').replace('\\', '/')
+    add(module_path)
+
+    for base in list(candidates):
+        root, ext = os.path.splitext(base)
+        if ext:
+            continue
+        for suffix in ('.py', '.go', '.js', '.jsx', '.ts', '.tsx', '.php'):
+            add(base + suffix)
+        add(os.path.join(base, '__init__.py'))
+        add(os.path.join(base, 'index.js'))
+        add(os.path.join(base, 'index.ts'))
+        add(os.path.join(base, 'index.tsx'))
+
+    if '\\' in import_path:
+        namespace_path = import_path.replace('\\', '/')
+        add(namespace_path + '.php')
+        add(os.path.basename(namespace_path) + '.php')
+
+    return candidates
+
+
+def _resolve_dependency_target(import_path, source_file, file_map):
+    for candidate in _dependency_target_candidates(import_path, source_file):
+        if candidate in file_map:
+            return candidate
+    basename = os.path.basename(import_path.replace('\\', '/'))
+    if basename:
+        for file_path in file_map:
+            if os.path.splitext(os.path.basename(file_path))[0] == basename:
+                return file_path
+    return None
+
+
+def _add_topology_link(links_by_pair, nodes, source_idx, target_idx, relationship, weight=1):
+    if source_idx is None or target_idx is None or source_idx == target_idx:
+        return
+    key = (source_idx, target_idx, relationship)
+    if key not in links_by_pair:
+        links_by_pair[key] = {
+            "source": source_idx,
+            "target": target_idx,
+            "weight": 0,
+            "relationship": relationship,
+            "isCrossLanguage": nodes[source_idx].get('lang', '') != nodes[target_idx].get('lang', '')
+        }
+    links_by_pair[key]["weight"] += weight
+
 # ==================== API ENDPOINT HANDLERS ====================
 
 def handle_stats(query_params=None):
@@ -152,38 +253,42 @@ def handle_stats(query_params=None):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+
+        project = _get_project_row(cursor, project_id)
+        if not project:
+            conn.close()
+            return {
+                "success": True,
+                "data": _empty_stats(),
+                "message": "Select a project to load project-scoped statistics"
+            }
         
-        if project_id:
-            cursor.execute("SELECT COUNT(*) as count FROM quality_files WHERE project_id = ?", (project_id,))
-            total_files = cursor.fetchone()['count']
-            cursor.execute("SELECT COALESCE(SUM(dependency_count), 0) as count FROM quality_files WHERE project_id = ?", (project_id,))
-            total_deps = cursor.fetchone()['count']
-            cursor.execute("SELECT COUNT(DISTINCT language) as count FROM quality_files WHERE project_id = ?", (project_id,))
-            distinct_languages = cursor.fetchone()['count']
-            cursor.execute("SELECT COALESCE(SUM(symbol_count), 0) as count FROM quality_files WHERE project_id = ?", (project_id,))
-            total_symbols = cursor.fetchone()['count']
-            cursor.execute("SELECT COUNT(*) as count FROM quality_files WHERE project_id = ? AND quality_score < 7.0", (project_id,))
-            files_with_issues = cursor.fetchone()['count']
+        cursor.execute("SELECT COUNT(*) as count FROM quality_files WHERE project_id = ?", (project_id,))
+        total_files = cursor.fetchone()['count']
+        cursor.execute("SELECT COALESCE(SUM(dependency_count), 0) as count FROM quality_files WHERE project_id = ?", (project_id,))
+        total_deps = cursor.fetchone()['count']
+        cursor.execute("SELECT COUNT(DISTINCT language) as count FROM quality_files WHERE project_id = ?", (project_id,))
+        distinct_languages = cursor.fetchone()['count']
+        cursor.execute("SELECT COALESCE(SUM(symbol_count), 0) as count FROM quality_files WHERE project_id = ?", (project_id,))
+        total_symbols = cursor.fetchone()['count']
+        cursor.execute("SELECT COUNT(*) as count FROM quality_files WHERE project_id = ? AND quality_score < 7.0", (project_id,))
+        files_with_issues = cursor.fetchone()['count']
+        
+        if _table_exists(cursor, 'token_usage'):
+            cursor.execute("PRAGMA table_info(token_usage)")
+            token_cols = [row[1] for row in cursor.fetchall()]
+            token_project_filter = "WHERE project_id = ?" if 'project_id' in token_cols else ""
+            token_params = (project_id,) if 'project_id' in token_cols else ()
+            cursor.execute("""
+                SELECT 
+                    COALESCE(SUM(prompt_tokens), 0) as input_tokens,
+                    COALESCE(SUM(completion_tokens), 0) as output_tokens,
+                    COALESCE(SUM(total_tokens), 0) as total_tokens
+                FROM token_usage
+                """ + token_project_filter, token_params)
+            token_stats = dict(cursor.fetchone())
         else:
-            cursor.execute("SELECT COUNT(*) as count FROM files")
-            total_files = cursor.fetchone()['count']
-            cursor.execute("SELECT COUNT(*) as count FROM dependencies")
-            total_deps = cursor.fetchone()['count']
-            cursor.execute("SELECT COUNT(DISTINCT language) as count FROM files")
-            distinct_languages = cursor.fetchone()['count']
-            cursor.execute("SELECT COUNT(*) as count FROM symbols")
-            total_symbols = cursor.fetchone()['count']
-            cursor.execute("SELECT COUNT(*) as count FROM files WHERE entity_count > 10")
-            files_with_issues = cursor.fetchone()['count']
-        
-        cursor.execute("""
-            SELECT 
-                COALESCE(SUM(prompt_tokens), 0) as input_tokens,
-                COALESCE(SUM(completion_tokens), 0) as output_tokens,
-                COALESCE(SUM(total_tokens), 0) as total_tokens
-            FROM token_usage
-        """)
-        token_stats = dict(cursor.fetchone())
+            token_stats = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
         
         conn.close()
         
@@ -204,15 +309,7 @@ def handle_stats(query_params=None):
         return {
             "success": False,
             "error": str(e),
-            "data": {
-                "files": 0,
-                "dependencies": 0,
-                "languages": 0,
-                "symbols": 0,
-                "files_with_issues": 0,
-                "token_usage": {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0},
-                "last_updated": datetime.now().isoformat()
-            }
+            "data": _empty_stats()
         }
 
 def _ensure_quality_schema():
@@ -242,36 +339,29 @@ def handle_quality(query_params=None):
 
         conn = get_db_connection()
         cursor = conn.cursor()
+        project = _get_project_row(cursor, project_id)
+        if not project:
+            conn.close()
+            return {
+                "success": True,
+                "data": [],
+                "message": "Select a project to load project-scoped quality data"
+            }
         
-        if project_id:
-            cursor.execute("""
-                SELECT
-                    file_path as path,
-                    language,
-                    quality_score,
-                    complexity,
-                    symbol_count,
-                    dependency_count,
-                    entity_count,
-                    file_size
-                FROM quality_files
-                WHERE project_id = ?
-                ORDER BY file_path
-            """, (project_id,))
-        else:
-            cursor.execute("""
-                SELECT
-                    file_path as path,
-                    language,
-                    quality_score,
-                    complexity,
-                    symbol_count,
-                    dependency_count,
-                    entity_count,
-                    file_size
-                FROM quality_files
-                ORDER BY file_path
-            """)
+        cursor.execute("""
+            SELECT
+                file_path as path,
+                language,
+                quality_score,
+                complexity,
+                symbol_count,
+                dependency_count,
+                entity_count,
+                file_size
+            FROM quality_files
+            WHERE project_id = ?
+            ORDER BY file_path
+        """, (project_id,))
         
         files = query_to_dict(cursor)
 
@@ -385,36 +475,77 @@ def handle_quality(query_params=None):
 def handle_topology(query_params=None):
     """GET /api/v1/topology - Dependency graph for visualization"""
     project_id = _resolve_project_id(query_params)
+    selected_commit = ''
+    if query_params:
+        selected_commit = query_params.get('commit', [''])[0]
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        project = _get_project_row(cursor, project_id)
+        if not project:
+            conn.close()
+            return {
+                "success": True,
+                "data": {
+                    "nodes": [],
+                    "links": [],
+                    "meta": {
+                        "project_id": project_id,
+                        "repo_path": None,
+                        "selected_commit": selected_commit,
+                        "latest_commit": None,
+                        "node_count": 0,
+                        "link_count": 0,
+                        "relationship_types": [],
+                        "last_updated": datetime.now().isoformat()
+                    }
+                },
+                "message": "Select a project to load project-scoped topology"
+            }
+        repo_path = project['repo_path'] if project else active_workspace.get('repo_path')
         
-        if project_id:
-            cursor.execute("""
-                SELECT 
-                    file_path as id,
-                    language as lang,
-                    quality_score,
-                    complexity,
-                    symbol_count,
-                    dependency_count
-                FROM quality_files
-                WHERE project_id = ?
-                ORDER BY file_path
-            """, (project_id,))
-        else:
-            cursor.execute("""
-                SELECT 
-                    relative_path as id,
-                    language as lang,
-                    entity_count,
-                    file_size
-                FROM files
-                ORDER BY relative_path
-            """)
+        cursor.execute("""
+            SELECT 
+                file_path as id,
+                language as lang,
+                quality_score,
+                complexity,
+                symbol_count,
+                dependency_count
+            FROM quality_files
+            WHERE project_id = ?
+            ORDER BY file_path
+        """, (project_id,))
         
         files = query_to_dict(cursor)
         
+        selected_commit_changes = {}
+        if project_id and selected_commit and _table_exists(cursor, 'git_file_changes'):
+            cursor.execute("""
+                SELECT file_path, status, lines_added, lines_removed
+                FROM git_file_changes
+                WHERE project_id = ? AND commit_hash = ?
+            """, (project_id, selected_commit))
+            selected_commit_changes = {
+                row['file_path']: {
+                    "status": row['status'],
+                    "lines_added": row['lines_added'],
+                    "lines_removed": row['lines_removed']
+                }
+                for row in cursor.fetchall()
+            }
+
+        if selected_commit and not selected_commit_changes:
+            diff_result = handle_git_diff(selected_commit)
+            if diff_result.get('success'):
+                for file_info in diff_result.get('data', {}).get('files', []):
+                    path = _normalize_rel_path(file_info.get('path'))
+                    selected_commit_changes[path] = {
+                        "status": file_info.get('status'),
+                        "lines_added": file_info.get('added', 0),
+                        "lines_removed": file_info.get('removed', 0)
+                    }
+
         nodes = []
         file_map = {}
         
@@ -443,6 +574,8 @@ def handle_topology(query_params=None):
                 "score": round(score, 1),
                 "weight": int(weight),
                 "smells": 0,
+                "changedInSelectedCommit": file['id'] in selected_commit_changes,
+                "change": selected_commit_changes.get(file['id']),
                 "x": x + (idx * 50) % 200 - 100,
                 "y": y + (idx * 70) % 150 - 75,
                 "vx": 0,
@@ -452,62 +585,77 @@ def handle_topology(query_params=None):
             nodes.append(node)
             file_map[file['id']] = idx
         
-        links = []
-        if project_id:
-            cursor.execute("""
+        links_by_pair = {}
+        if _table_exists(cursor, 'git_file_changes'):
+            params = [project_id]
+            commit_filter = ""
+            if selected_commit:
+                commit_filter = " AND commit_hash = ?"
+                params.append(selected_commit)
+            cursor.execute(f"""
                 SELECT commit_hash, file_path
                 FROM git_file_changes
-                WHERE project_id = ?
+                WHERE project_id = ?{commit_filter}
                 ORDER BY commit_hash
-            """, (project_id,))
+            """, tuple(params))
             commit_rows = query_to_dict(cursor)
             commit_files = {}
             for row in commit_rows:
-                commit_files.setdefault(row['commit_hash'], []).append(row['file_path'])
-            
-            link_counts = {}
+                normalized_file = _normalize_rel_path(row['file_path'])
+                if normalized_file in file_map:
+                    commit_files.setdefault(row['commit_hash'], []).append(normalized_file)
+
             for files_in_commit in commit_files.values():
-                for i in range(len(files_in_commit)):
-                    for j in range(i + 1, len(files_in_commit)):
-                        pair = tuple(sorted([files_in_commit[i], files_in_commit[j]]))
-                        link_counts[pair] = link_counts.get(pair, 0) + 1
-            
-            for (source_path, target_path), count in link_counts.items():
-                source_idx = file_map.get(source_path)
-                target_idx = file_map.get(target_path)
-                if source_idx is not None and target_idx is not None:
-                    source_lang = nodes[source_idx].get('lang', '')
-                    target_lang = nodes[target_idx].get('lang', '')
-                    links.append({
-                        "source": source_idx,
-                        "target": target_idx,
-                        "weight": count,
-                        "isCrossLanguage": source_lang != target_lang
-                    })
-        else:
-            cursor.execute("""
-                SELECT 
-                    d.source_file,
-                    d.import_path,
-                    f1.language as source_lang,
-                    f2.language as target_lang
-                FROM dependencies d
-                LEFT JOIN files f1 ON d.source_file = f1.relative_path
-                LEFT JOIN files f2 ON d.import_path = f2.relative_path
-                ORDER BY d.source_file
-            """)
+                unique_files = sorted(set(files_in_commit))
+                for i in range(len(unique_files)):
+                    for j in range(i + 1, len(unique_files)):
+                        source_idx = file_map.get(unique_files[i])
+                        target_idx = file_map.get(unique_files[j])
+                        _add_topology_link(links_by_pair, nodes, source_idx, target_idx, "commit_cochange")
+
+        if selected_commit and selected_commit_changes:
+            unique_files = sorted(path for path in selected_commit_changes if path in file_map)
+            for i in range(len(unique_files)):
+                for j in range(i + 1, len(unique_files)):
+                    _add_topology_link(
+                        links_by_pair,
+                        nodes,
+                        file_map.get(unique_files[i]),
+                        file_map.get(unique_files[j]),
+                        "selected_commit"
+                    )
+
+        if _table_exists(cursor, 'dependencies'):
+            cursor.execute("SELECT source_file, import_path FROM dependencies ORDER BY source_file")
             deps = query_to_dict(cursor)
             for dep in deps:
-                source_idx = file_map.get(dep['source_file'])
-                target_idx = file_map.get(dep['import_path'])
-                if source_idx is not None and target_idx is not None:
-                    source_lang = dep['source_lang'] or ''
-                    target_lang = dep['target_lang'] or ''
-                    links.append({
-                        "source": source_idx,
-                        "target": target_idx,
-                        "isCrossLanguage": source_lang != target_lang
-                    })
+                source_file = _normalize_rel_path(dep['source_file'])
+                if source_file not in file_map:
+                    continue
+                target_file = _resolve_dependency_target(dep['import_path'], source_file, file_map)
+                if target_file:
+                    _add_topology_link(
+                        links_by_pair,
+                        nodes,
+                        file_map.get(source_file),
+                        file_map.get(target_file),
+                        "imports"
+                    )
+
+        links = list(links_by_pair.values())
+
+        latest_commit = None
+        if project_id and _table_exists(cursor, 'git_commits'):
+            cursor.execute("""
+                SELECT commit_hash, short_hash, timestamp, message
+                FROM git_commits
+                WHERE project_id = ?
+                ORDER BY timestamp DESC
+                LIMIT 1
+            """, (project_id,))
+            latest_row = cursor.fetchone()
+            if latest_row:
+                latest_commit = dict(latest_row)
         
         for link in links:
             if link.get('isCrossLanguage'):
@@ -519,7 +667,17 @@ def handle_topology(query_params=None):
             "success": True,
             "data": {
                 "nodes": nodes,
-                "links": links
+                "links": links,
+                "meta": {
+                    "project_id": project_id,
+                    "repo_path": repo_path,
+                    "selected_commit": selected_commit,
+                    "latest_commit": latest_commit,
+                    "node_count": len(nodes),
+                    "link_count": len(links),
+                    "relationship_types": sorted(set(link.get('relationship', 'unknown') for link in links)),
+                    "last_updated": datetime.now().isoformat()
+                }
             }
         }
     except Exception as e:
@@ -601,6 +759,7 @@ def handle_blast_radius(query_params=None):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        project = _get_project_row(cursor, project_id)
 
         cursor.execute(
             "SELECT symbol_name FROM core_symbols WHERE project_id = ? AND file_path = ?",
@@ -629,13 +788,26 @@ def handle_blast_radius(query_params=None):
                     dependent_files.add(row['source_file'])
 
         if not dependent_files:
+            file_map = {}
+            if project_id and _table_exists(cursor, 'quality_files'):
+                cursor.execute("SELECT file_path FROM quality_files WHERE project_id = ?", (project_id,))
+                file_map = {_normalize_rel_path(row['file_path']): True for row in cursor.fetchall()}
+            elif _table_exists(cursor, 'files'):
+                cursor.execute("SELECT relative_path FROM files")
+                file_map = {_normalize_rel_path(row['relative_path']): True for row in cursor.fetchall()}
+
             cursor.execute("SELECT source_file, import_path FROM dependencies")
             deps = query_to_dict(cursor)
             dependency_graph = {}
             for dep in deps:
-                dependency_graph.setdefault(dep['import_path'], []).append(dep['source_file'])
+                source_file = _normalize_rel_path(dep['source_file'])
+                if file_map and source_file not in file_map:
+                    continue
+                target_file = _resolve_dependency_target(dep['import_path'], source_file, file_map)
+                if target_file:
+                    dependency_graph.setdefault(target_file, []).append(source_file)
 
-            queue = [file_path]
+            queue = [_normalize_rel_path(file_path)]
             while queue:
                 current = queue.pop(0)
                 for dependent in dependency_graph.get(current, []):
@@ -650,7 +822,8 @@ def handle_blast_radius(query_params=None):
             "data": {
                 "file_path": file_path,
                 "public_symbols": public_symbols,
-                "dependent_files": sorted(dependent_files)
+                "dependent_files": sorted(dependent_files),
+                "repo_path": project['repo_path'] if project else active_workspace.get('repo_path')
             }
         }
     except Exception as e:
@@ -661,32 +834,271 @@ def handle_blast_radius(query_params=None):
             "data": {}
         }
 
+# ==================== FILE IMPORTANCE AI ENDPOINT ====================
+
+def handle_file_importance(handler):
+    """POST /api/v1/topology/file-importance - AI-powered file importance analysis."""
+    try:
+        content_length = int(handler.headers.get('Content-Length', 0))
+        body = handler.rfile.read(content_length)
+        data = json.loads(body)
+
+        project_id = data.get('project_id', '').strip()
+        file_path = data.get('file_path', '').strip()
+
+        if not project_id:
+            return {"success": False, "error": "project_id is required"}
+        if not file_path:
+            return {"success": False, "error": "file_path is required"}
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        project = _get_project_row(cursor, project_id)
+        if not project:
+            conn.close()
+            return {"success": False, "error": "Project not found"}
+
+        # 1. Quality file data
+        quality = None
+        cursor.execute(
+            "SELECT file_path, language, quality_score, complexity, symbol_count, dependency_count, entity_count, file_size "
+            "FROM quality_files WHERE project_id = ? AND file_path = ?",
+            (project_id, file_path)
+        )
+        qrow = cursor.fetchone()
+        if qrow:
+            quality = dict(qrow)
+
+        # 2. Symbols defined in this file
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='core_symbols'")
+        has_symbols = cursor.fetchone() is not None
+        symbols = []
+        if has_symbols:
+            cursor.execute(
+                "SELECT symbol_name, symbol_type FROM core_symbols WHERE project_id = ? AND file_path = ? LIMIT 20",
+                (project_id, file_path)
+            )
+            symbols = [dict(r) for r in cursor.fetchall()]
+
+        # 3. Outgoing dependencies (what this file imports)
+        outgoing_deps = []
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='dependencies'")
+        has_deps = cursor.fetchone() is not None
+        if has_deps:
+            cursor.execute("PRAGMA table_info(dependencies)")
+            dep_cols = [r['name'] for r in cursor.fetchall()]
+            if 'project_id' in dep_cols:
+                cursor.execute(
+                    "SELECT DISTINCT import_path FROM dependencies WHERE project_id = ? AND source_file = ? LIMIT 30",
+                    (project_id, file_path)
+                )
+            else:
+                cursor.execute(
+                    "SELECT DISTINCT import_path FROM dependencies WHERE source_file = ? LIMIT 30",
+                    (file_path,)
+                )
+            outgoing_deps = [r['import_path'] for r in cursor.fetchall()]
+
+        # 4. Incoming dependencies (what imports this file)
+        incoming_deps = []
+        deps_has_project_id = has_deps and 'project_id' in dep_cols
+        if has_deps:
+            import_path_guess = file_path.replace('/', '.').rsplit('.', 1)[0] if '.' in file_path else file_path
+            if deps_has_project_id:
+                cursor.execute(
+                    "SELECT DISTINCT source_file FROM dependencies WHERE project_id = ? AND import_path = ? LIMIT 30",
+                    (project_id, import_path_guess)
+                )
+            else:
+                cursor.execute(
+                    "SELECT DISTINCT source_file FROM dependencies WHERE import_path = ? LIMIT 30",
+                    (import_path_guess,)
+                )
+            incoming_deps = [r['source_file'] for r in cursor.fetchall()]
+
+        # 5. Git change frequency
+        change_count = 0
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='git_file_changes'")
+        has_git = cursor.fetchone() is not None
+        if has_git:
+            cursor.execute(
+                "SELECT COUNT(*) as cnt FROM git_file_changes WHERE project_id = ? AND file_path = ?",
+                (project_id, file_path)
+            )
+            row = cursor.fetchone()
+            change_count = row['cnt'] if row else 0
+
+        conn.close()
+
+        # Build context for the AI
+        lang = quality['language'] if quality else 'Unknown'
+        score = quality['quality_score'] if quality else 0
+        sym_count = quality['symbol_count'] if quality else 0
+        dep_count = quality['dependency_count'] if quality else 0
+        ent_count = quality['entity_count'] if quality else 0
+        file_size = quality['file_size'] if quality else 0
+        complexity = quality['complexity'] if quality else 0
+
+        symbol_names = ', '.join(s['symbol_name'] for s in symbols) if symbols else 'none'
+
+        prompt = f"""Analyze the importance of this file in the project. Return ONLY valid JSON with these fields.
+
+File: {file_path}
+Language: {lang}
+Quality Score: {score}/10
+Complexity: {complexity}
+Symbols: {sym_count} ({symbol_names})
+Dependencies (imports): {dep_count}
+Outgoing imports: {', '.join(outgoing_deps[:10]) if outgoing_deps else 'none'}
+Incoming dependents: {len(incoming_deps)} files
+Git change frequency: {change_count} commits
+Entity count: {ent_count}
+File size: {file_size} bytes
+
+Respond with JSON only:
+{{
+  "centrality": "low|medium|high|critical",
+  "change_frequency": "stable|moderate|frequent|very_frequent",
+  "complexity_rating": "simple|moderate|complex|very_complex",
+  "criticality": "low|medium|high|critical",
+  "risk_assessment": "<1-2 sentence risk description>",
+  "explanation": "<2-3 sentence importance explanation>"
+}}"""
+
+        # Call AI provider
+        result = process_live_agent_inference(project_id, prompt)
+
+        if not result.get('success'):
+            return {
+                "success": False,
+                "error": "AI inference failed",
+                "message": result.get('message', 'Unknown AI error'),
+                "context": {
+                    "file_path": file_path,
+                    "language": lang,
+                    "quality_score": score,
+                    "symbols": sym_count,
+                    "dependencies": dep_count,
+                    "incoming_dependents": len(incoming_deps),
+                    "change_count": change_count
+                }
+            }
+
+        # Parse AI response as JSON
+        ai_text = result.get('suggestion', '')
+        try:
+            # Try to extract JSON from the response (handle markdown fences)
+            import re as regex
+            json_match = regex.search(r'\{.*\}', ai_text, regex.DOTALL)
+            if json_match:
+                importance = json.loads(json_match.group())
+            else:
+                importance = json.loads(ai_text)
+        except (json.JSONDecodeError, Exception):
+            importance = {
+                "centrality": "unknown",
+                "change_frequency": "unknown",
+                "complexity_rating": "unknown",
+                "criticality": "unknown",
+                "risk_assessment": "AI analysis could not be parsed.",
+                "explanation": ai_text[:500]
+            }
+
+        return {
+            "success": True,
+            "data": {
+                "file_path": file_path,
+                "importance": importance,
+                "context": {
+                    "language": lang,
+                    "quality_score": score,
+                    "symbols": sym_count,
+                    "dependencies": dep_count,
+                    "incoming_dependents": len(incoming_deps),
+                    "change_count": change_count
+                }
+            }
+        }
+    except Exception as e:
+        log(f"Error in handle_file_importance: {e}")
+        return {"success": False, "error": str(e)}
+
+
 # ==================== CONFIGURATION ENDPOINTS ====================
 
 # Configuration file path
 CONFIG_FILE = os.path.join(DASHBOARD_DIR, '..', 'cli', 'wikihub_config.json')
 
+def _default_config():
+    return {
+        "providers": {
+            "openrouter": {"apiKey": "", "defaultModel": "", "status": "not_configured"},
+            "gemini": {"apiKey": "", "status": "not_configured"},
+            "deepseek": {"apiKey": "", "status": "not_configured"},
+            "qwen": {"apiKey": "", "status": "not_configured"}
+        },
+        "system": {
+            "defaultModel": "",
+            "tokenBudget": 100000
+        },
+        "github": {
+            "token": "",
+            "status": "not_configured"
+        }
+    }
+
+
+def _dashboard_provider_config(provider_data):
+    api_key = provider_data.get('apiKey') or provider_data.get('api_key') or ''
+    default_model = provider_data.get('defaultModel') or ''
+    models = provider_data.get('models') or []
+    if not default_model and isinstance(models, list) and models:
+        default_model = models[0]
+    return {
+        "apiKey": api_key,
+        "defaultModel": default_model,
+        "status": "configured" if api_key else provider_data.get('status', 'not_configured')
+    }
+
+
+def _merge_config(base, incoming):
+    if not isinstance(incoming, dict):
+        return base
+    providers = incoming.get('providers', incoming)
+    if isinstance(providers, dict):
+        for provider in base['providers']:
+            pdata = providers.get(provider)
+            if isinstance(pdata, dict):
+                normalized = _dashboard_provider_config(pdata)
+                if normalized.get('apiKey') or not base['providers'][provider].get('apiKey'):
+                    base['providers'][provider].update(normalized)
+    system = incoming.get('system')
+    if isinstance(system, dict):
+        base['system'].update(system)
+    github = incoming.get('github')
+    if isinstance(github, dict):
+        base['github'].update(github)
+    return base
+
+
 def load_config():
     """Load configuration from JSON file"""
     try:
+        config = _default_config()
         if os.path.exists(CONFIG_FILE):
             with open(CONFIG_FILE, 'r') as f:
-                return json.load(f)
-        return {
-            "providers": {
-                "openrouter": {"apiKey": "", "status": "not_configured"},
-                "gemini": {"apiKey": "", "status": "not_configured"},
-                "deepseek": {"apiKey": "", "status": "not_configured"},
-                "qwen": {"apiKey": "", "status": "not_configured"}
-            },
-            "system": {
-                "defaultModel": "",
-                "tokenBudget": 100000
-            }
-        }
+                config = _merge_config(config, json.load(f))
+
+        plaintext_provider_file = os.path.expanduser('~/.config/wikihub/providers.json')
+        if os.path.exists(plaintext_provider_file):
+            with open(plaintext_provider_file, 'r') as f:
+                config = _merge_config(config, json.load(f))
+
+        return config
     except Exception as e:
         log(f"ERROR loading config: {e}")
-        return {}
+        return _default_config()
 
 def save_config(config):
     """Save configuration to JSON file"""
@@ -698,6 +1110,50 @@ def save_config(config):
     except Exception as e:
         log(f"ERROR saving config: {e}")
         return False
+
+def _auto_set_project_model_from_vault(project_id):
+    """Read the vault config and auto-set the project's target_model from the configured provider."""
+    try:
+        config = load_config()
+        vault_providers = config.get('providers', {})
+        system = config.get('system', {})
+
+        for provider_name, pdata in vault_providers.items():
+            api_key = pdata.get('apiKey', '') or pdata.get('api_key', '')
+            status = pdata.get('status', 'not_configured')
+            if api_key and status == 'configured':
+                default_model = pdata.get('defaultModel', '') or ''
+                # Build the target model string
+                if default_model:
+                    target_model = f'{provider_name}/{default_model}'
+                else:
+                    target_model = f'{provider_name}/default'
+                # Fall back to system default if set
+                system_default = system.get('defaultModel', '')
+                if system_default:
+                    target_model = system_default
+
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                try:
+                    cursor.execute("PRAGMA table_info(wiki_projects)")
+                    cols = [r['name'] for r in cursor.fetchall()]
+                    if 'target_model' in cols:
+                        cursor.execute(
+                            "UPDATE wiki_projects SET target_model = ? WHERE id = ? AND (target_model IS NULL OR target_model = '')",
+                            (target_model, project_id)
+                        )
+                        if cursor.rowcount > 0:
+                            conn.commit()
+                            log(f'Auto-set target_model={target_model} for project {project_id} from vault provider {provider_name}')
+                except Exception:
+                    pass
+                finally:
+                    conn.close()
+                break
+    except Exception as e:
+        log(f'Error auto-setting project model from vault: {e}')
+
 
 def handle_get_config():
     """GET /api/v1/config - Get provider configuration"""
@@ -724,6 +1180,10 @@ def handle_save_config(handler):
         
         if save_config(data):
             log("Configuration saved successfully")
+            # Auto-set the active project's target model from the vault
+            active_pid = active_workspace.get('project_id')
+            if active_pid:
+                _auto_set_project_model_from_vault(active_pid)
             return {
                 "success": True,
                 "message": "Configuration saved"
@@ -1111,6 +1571,9 @@ def handle_ingest_github(handler):
                     log(f'Auto-created project: {project_name} ({project_id}) for GitHub ingestion')
                 
                 conn.close()
+
+                # Auto-set target_model from vault if a provider is configured
+                _auto_set_project_model_from_vault(project_id)
                 
                 # Set as active workspace
                 active_workspace['project_id'] = project_id
@@ -1149,6 +1612,16 @@ def handle_ingest_github(handler):
 
         success = spawn_background_job(job_id, cmd, project_id, env=env)
         if success:
+            # Persist GitHub token to config vault
+            try:
+                config = load_config()
+                config['github'] = config.get('github', {})
+                config['github']['token'] = github_token
+                config['github']['status'] = 'configured'
+                save_config(config)
+            except Exception as e:
+                log(f'Warning: Failed to persist GitHub token to config: {e}')
+
             return {
                 'success': True,
                 'data': {
@@ -1450,12 +1923,6 @@ def handle_navigator_query(handler):
             return {
                 "success": False,
                 "error": "Invalid tool requested"
-            }
-
-        if tool in ['trace_lineage', 'blast_radius', 'explain_module'] and not target and not query:
-            return {
-                "success": False,
-                "error": "Target or query is required for the selected tool"
             }
 
         conn = get_db_connection()
@@ -1866,12 +2333,14 @@ def handle_audit_file(handler):
         job_id = f"audit_{str(uuid.uuid4())[:8]}"
         
         # Spawn background audit process
+        python_bin = locate_python_bin()
         cmd = [
-            "python3",
+            python_bin,
             os.path.join(DASHBOARD_DIR, '..', 'ai-core', 'services', 'git_extraction_engine.py'),
             "--action", "audit-single",
             "--project-id", project_id,
             "--repo-path", repo_path,
+            "--db", DB_PATH,
             "--target-file", file_path
         ]
         
@@ -1966,12 +2435,20 @@ def handle_delete_project(handler, project_id):
             "scan_jobs",
             "git_branches",
             "git_commits",
-            "git_files"
+            "git_files",
+            "git_file_changes",
+            "quality_files",
+            "core_symbols",
+            "data_lineage_edges",
+            "semantic_artifacts",
+            "token_telemetry_logs",
+            "projects"
         ]
         
         for table in tables_to_clean:
             try:
-                cursor.execute(f"DELETE FROM {table} WHERE project_id = ?", (project_id,))
+                id_column = "id" if table == "projects" else "project_id"
+                cursor.execute(f"DELETE FROM {table} WHERE {id_column} = ?", (project_id,))
             except Exception as e:
                 # Table might not exist yet, skip it
                 log(f"Skipping {table} cleanup (table may not exist): {e}")
@@ -2071,6 +2548,9 @@ def handle_create_project(handler):
         
         conn.commit()
         conn.close()
+
+        # Auto-set target_model from vault if a provider is configured
+        _auto_set_project_model_from_vault(project_id)
         
         log(f"Created project: {project_name} ({project_id}) at {repo_path}")
         
@@ -2178,17 +2658,18 @@ def handle_select_workspace(handler):
 
 def get_repo_path():
     """Get the repository path from active workspace or default"""
-    # Use active workspace if set
     if active_workspace.get("repo_path"):
         return active_workspace["repo_path"]
-    
-    # Fallback to default (parent of apps/dashboard)
-    return os.path.abspath(os.path.join(DASHBOARD_DIR, '..', '..'))
+    return None
 
 def run_git_command(args, repo_path=None):
     """Run git command and return stdout. All logs to stderr."""
     if repo_path is None:
         repo_path = get_repo_path()
+
+    if not repo_path:
+        print("[Git] No active project selected; refusing projectless git command", file=sys.stderr)
+        return None
     
     try:
         result = subprocess.run(
@@ -2454,8 +2935,11 @@ class WikiHubHandler(http.server.SimpleHTTPRequestHandler):
         elif path == '/api/v1/telemetry':
             self._send_json_response(handle_get_telemetry(params))
         else:
-            # Serve static files (index.html, etc.)
-            super().do_GET()
+            # API-only mode — no static file serving
+            self._send_json_response({
+                "success": False,
+                "error": "Endpoint not found"
+            }, status_code=404)
     
     def do_POST(self):
         """Handle POST requests for API endpoints"""
@@ -2482,6 +2966,8 @@ class WikiHubHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json_response(handle_save_config(self))
         elif path == '/api/v1/config/test-connection':
             self._send_json_response(handle_test_provider_connection(self))
+        elif path == '/api/v1/topology/file-importance':
+            self._send_json_response(handle_file_importance(self))
         elif path == '/api/v1/chat/completion':
             self._send_json_response(handle_chat_completion(self))
         else:
@@ -2537,7 +3023,7 @@ class WikiHubHandler(http.server.SimpleHTTPRequestHandler):
 
 if __name__ == "__main__":
     log(f"Starting WikiHub Dashboard Server on port {PORT}")
-    log(f"Serving static files from: {DASHBOARD_DIR}")
+    log(f"API server running on port {PORT} (static files served separately by static-server)")
     log(f"Database path: {DB_PATH}")
     log(f"API Endpoints:")
     log(f"  GET /api/v1/stats    - Aggregate metrics")
