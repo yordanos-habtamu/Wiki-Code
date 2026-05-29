@@ -20,7 +20,7 @@
                 v-for="tool in tools"
                 :key="tool.value"
                 type="button"
-                @click="selectTool(tool.value)"
+                @click="selectToolAndRun(tool.value)"
                 :class="[
                   'rounded-xl border px-3 py-2 text-left text-sm transition-all',
                   selectedTool === tool.value
@@ -33,14 +33,6 @@
             </div>
           </div>
 
-          <div class="space-y-2">
-            <label class="text-xs uppercase tracking-[0.18em] text-slate-500">Query / Target</label>
-            <input
-              v-model="inputText"
-              :placeholder="placeholderText"
-              class="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/20"
-            />
-          </div>
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -87,7 +79,7 @@
             :disabled="!projectId || status === 'running'"
             class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {{ status === 'running' ? 'Executing…' : 'Run Query' }}
+            {{ status === 'running' ? 'Executing…' : 'Run' }}
           </button>
           <button
             @click="resetConsole"
@@ -116,7 +108,7 @@
 
       <div class="bg-gray-900 border border-gray-800 rounded-2xl p-4 h-[320px] overflow-auto">
         <div class="mb-3 text-xs uppercase tracking-[0.18em] text-slate-500">Navigator Output</div>
-        <div v-if="!result" class="text-slate-500">No structured results yet. Run a query to populate the output panel.</div>
+        <div v-if="!result" class="text-slate-500">No structured results yet. Select a tool to populate the output panel.</div>
 
         <template v-if="result">
           <div class="space-y-3 text-sm text-slate-100">
@@ -179,10 +171,28 @@
             <div v-if="result.tool === 'explain_module'" class="space-y-2">
               <div class="text-xs uppercase tracking-[0.18em] text-slate-500">Module Explanation</div>
               <div class="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-100">
-                <div class="font-semibold">File: {{ result.file_path }}</div>
+                <div v-if="result.file_path" class="font-semibold">File: {{ result.file_path }}</div>
                 <div class="text-slate-400 text-[12px] mt-2">{{ result.summary || 'No summary available.' }}</div>
                 <div v-if="result.has_doc_drift" class="mt-2 rounded-xl bg-rose-950 px-3 py-2 text-rose-200">
                   Documentation drift detected.
+                </div>
+              </div>
+              <div v-if="Array.isArray(result.files)" class="space-y-2">
+                <div class="text-xs uppercase tracking-[0.18em] text-slate-500">Project Files</div>
+                <div class="space-y-2 max-h-52 overflow-y-auto">
+                  <button
+                    v-for="(file, index) in result.files"
+                    :key="index"
+                    type="button"
+                    @click="handleFileClick(file.file_path)"
+                    class="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-left text-sm text-slate-100 hover:border-blue-500 hover:text-blue-300"
+                  >
+                    <div class="font-semibold truncate">{{ file.file_path }}</div>
+                    <div class="text-slate-500 text-[11px]">
+                      Lang: {{ extractLang(file.purpose_summary || file.language || 'Unknown') }}
+                      <span v-if="file.symbol_count !== undefined"> &middot; Symbols: {{ file.symbol_count }}</span>
+                    </div>
+                  </button>
                 </div>
               </div>
             </div>
@@ -212,11 +222,10 @@ export default defineComponent({
     ]
 
     const selectedTool = ref('find_implementation')
-    const inputText = ref('')
     const direction = ref('forward')
     const maxDepth = ref(3)
     const status = ref<'idle' | 'running' | 'completed' | 'failed'>('idle')
-    const statusMessage = ref('Ready for query')
+    const statusMessage = ref('Ready')
     const jobId = ref('')
     const progress = ref<number | null>(0)
     const logs = ref<string[]>([])
@@ -224,19 +233,6 @@ export default defineComponent({
     const lastExternalJobId = ref('')
     const activeModel = ref('')
     let pollingInterval: number | null = null
-
-    const placeholderText = computed(() => {
-      if (selectedTool.value === 'find_implementation') {
-        return 'Search for implementation intent or module behavior...'
-      }
-      if (selectedTool.value === 'trace_lineage') {
-        return 'Enter dataset name or entity identifier...'
-      }
-      if (selectedTool.value === 'blast_radius') {
-        return 'Enter the file path to analyze blast radius...'
-      }
-      return 'Enter the target file or module path...'
-    })
 
     const statusLabel = computed(() => {
       if (status.value === 'running') return 'Running'
@@ -262,12 +258,20 @@ export default defineComponent({
       return 'Results available.'
     })
 
-    function selectTool(tool: string) {
+    function extractLang(lang: string): string {
+      if (lang.startsWith('[')) {
+        const m = lang.match(/\[(.*?)\]/)
+        if (m) return m[1]
+      }
+      return lang || 'Unknown'
+    }
+
+    function selectToolAndRun(tool: string) {
       selectedTool.value = tool
-      inputText.value = ''
-      statusMessage.value = 'Ready for query'
+      statusMessage.value = 'Ready'
       result.value = null
       logs.value = []
+      submitQuery()
     }
 
     function appendLogs(jobData: any) {
@@ -282,7 +286,7 @@ export default defineComponent({
 
     function resetConsole() {
       status.value = 'idle'
-      statusMessage.value = 'Ready for query'
+      statusMessage.value = 'Ready'
       jobId.value = ''
       progress.value = 0
       logs.value = []
@@ -339,9 +343,19 @@ export default defineComponent({
           if (parsed) {
             result.value = parsed
             emit('navigator-result', parsed)
-          } else if (jobData.result && !parsed) {
-            result.value = jobData.result
-            emit('navigator-result', jobData.result)
+          } else {
+            const stdout = Array.isArray(jobData.stdout_lines) ? jobData.stdout_lines.join('') : ''
+            if (stdout) {
+              try {
+                const parsedStdout = JSON.parse(stdout)
+                if (parsedStdout.success && parsedStdout.data) {
+                  result.value = parsedStdout.data
+                  emit('navigator-result', parsedStdout.data)
+                }
+              } catch {
+                // Not valid JSON — result stays null
+              }
+            }
           }
         }
       } catch (err: any) {
@@ -370,8 +384,8 @@ export default defineComponent({
       const payload = {
         project_id: props.projectId,
         tool: selectedTool.value,
-        target: inputText.value.trim(),
-        query: inputText.value.trim(),
+        target: '',
+        query: '',
         direction: direction.value,
         max_depth: maxDepth.value
       }
@@ -463,7 +477,6 @@ export default defineComponent({
     return {
       tools,
       selectedTool,
-      inputText,
       direction,
       maxDepth,
       status,
@@ -472,10 +485,10 @@ export default defineComponent({
       progress,
       logs,
       result,
-      placeholderText,
       statusLabel,
       summaryText,
-      selectTool,
+      selectToolAndRun,
+      extractLang,
       handleFileClick,
       resetConsole,
       submitQuery,

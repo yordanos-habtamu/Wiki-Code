@@ -100,6 +100,78 @@
           </div>
         </div>
 
+        <!-- AI Importance Analysis -->
+        <div class="bg-gray-950 border border-gray-800 rounded-xl p-4">
+          <div class="text-xs text-gray-500 uppercase tracking-wider mb-3">AI Importance Analysis</div>
+
+          <div v-if="!importanceData && !importanceLoading" class="text-xs text-gray-400">
+            Run the analysis to assess this file's centrality, criticality, and risk impact.
+          </div>
+
+          <div v-if="importanceLoading" class="space-y-2">
+            <div class="flex items-center gap-2 text-xs text-blue-400">
+              <span class="inline-block animate-spin">⟳</span>
+              Analyzing file importance...
+            </div>
+            <div class="w-full bg-gray-800 rounded-full h-1.5">
+              <div class="bg-blue-500 h-1.5 rounded-full animate-pulse" style="width: 60%"></div>
+            </div>
+          </div>
+
+          <div v-if="importanceData" class="space-y-3">
+            <div class="grid grid-cols-2 gap-2">
+              <div class="bg-gray-900 rounded-lg p-2">
+                <div class="text-[10px] text-gray-500">Centrality</div>
+                <div :class="['text-xs font-semibold', getImportanceColor(importanceData.centrality)]">
+                  {{ importanceData.centrality }}
+                </div>
+              </div>
+              <div class="bg-gray-900 rounded-lg p-2">
+                <div class="text-[10px] text-gray-500">Change Freq</div>
+                <div :class="['text-xs font-semibold', getImportanceColor(importanceData.change_frequency)]">
+                  {{ importanceData.change_frequency }}
+                </div>
+              </div>
+              <div class="bg-gray-900 rounded-lg p-2">
+                <div class="text-[10px] text-gray-500">Complexity</div>
+                <div :class="['text-xs font-semibold', getImportanceColor(importanceData.complexity_rating)]">
+                  {{ importanceData.complexity_rating }}
+                </div>
+              </div>
+              <div class="bg-gray-900 rounded-lg p-2">
+                <div class="text-[10px] text-gray-500">Criticality</div>
+                <div :class="['text-xs font-semibold', getImportanceColor(importanceData.criticality)]">
+                  {{ importanceData.criticality }}
+                </div>
+              </div>
+            </div>
+            <div class="bg-gray-900 rounded-lg p-3">
+              <div class="text-[10px] text-gray-500 mb-1">Risk Assessment</div>
+              <div class="text-xs text-gray-300">{{ importanceData.risk_assessment }}</div>
+            </div>
+            <div class="bg-gray-900 rounded-lg p-3">
+              <div class="text-[10px] text-gray-500 mb-1">Explanation</div>
+              <div class="text-xs text-gray-300 leading-relaxed">{{ importanceData.explanation }}</div>
+            </div>
+          </div>
+
+          <button
+            v-if="!importanceLoading"
+            @click="analyzeImportance"
+            :disabled="importanceData !== null"
+            class="w-full mt-3 bg-purple-600 hover:bg-purple-700 text-white font-medium py-2 px-4 rounded-lg transition-colors active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+          >
+            {{ importanceData ? '✓ Analyzed' : 'Analyze Importance' }}
+          </button>
+          <button
+            v-if="importanceData"
+            @click="importanceData = null"
+            class="w-full mt-1 text-xs text-gray-500 hover:text-gray-300 transition-colors"
+          >
+            Re-analyze
+          </button>
+        </div>
+
         <!-- Action Buttons -->
         <div class="space-y-2">
           <button 
@@ -129,7 +201,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onUnmounted } from 'vue'
+import { ref, onUnmounted, watch } from 'vue'
 import { useWorkspaceState } from '../../composables/useWorkspaceState'
 
 interface QualityFile {
@@ -160,6 +232,57 @@ const auditComplete = ref(false)
 const auditMessage = ref('')
 const activeAuditJobId = ref('')
 let auditPollingInterval: any = null
+
+// AI Importance state
+const importanceLoading = ref(false)
+const importanceData = ref<any>(null)
+
+async function analyzeImportance() {
+  if (!props.file || !props.file.path) return
+  importanceLoading.value = true
+  importanceData.value = null
+
+  try {
+    const workspace = useWorkspaceState()
+    if (!workspace.activeProject.value) {
+      throw new Error('No active project')
+    }
+
+    const response = await fetch('/api/v1/topology/file-importance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        project_id: workspace.activeProject.value.id,
+        file_path: props.file.path
+      })
+    })
+
+    const result = await response.json()
+    if (result.success && result.data?.importance) {
+      importanceData.value = result.data.importance
+    } else {
+      throw new Error(result.error || 'Analysis failed')
+    }
+  } catch (err: any) {
+    console.error('[NodeInspector] Importance analysis failed:', err)
+    importanceData.value = {
+      centrality: 'error',
+      change_frequency: 'error',
+      complexity_rating: 'error',
+      criticality: 'error',
+      risk_assessment: 'Failed to analyze. ' + (err.message || ''),
+      explanation: 'Could not complete AI analysis. Check that the AI provider is configured in Settings.'
+    }
+  } finally {
+    importanceLoading.value = false
+  }
+}
+
+// Reset importance when file changes
+watch(() => props.file?.path, () => {
+  importanceData.value = null
+  importanceLoading.value = false
+})
 
 async function runAuditPipeline() {
   if (!props.file || !props.file.path) {
@@ -287,6 +410,27 @@ function getPriorityVariant(priority: string): 'critical' | 'high' | 'medium' | 
     'Isolated': 'isolated'
   }
   return variants[priority] || 'medium'
+}
+
+function getImportanceColor(rating: string): string {
+  const low = 'text-emerald-400'
+  const moderate = 'text-sky-400'
+  const high = 'text-amber-400'
+  const critical = 'text-rose-400'
+  const map: Record<string, string> = {
+    'low': low,
+    'stable': low,
+    'simple': low,
+    'medium': moderate,
+    'moderate': moderate,
+    'high': high,
+    'frequent': high,
+    'complex': high,
+    'critical': critical,
+    'very_frequent': critical,
+    'very_complex': critical,
+  }
+  return map[rating?.toLowerCase()] || 'text-gray-400'
 }
 
 function formatBytes(bytes: number): string {

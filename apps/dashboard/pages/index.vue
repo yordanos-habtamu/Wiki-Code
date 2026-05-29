@@ -28,7 +28,7 @@
               ↺
             </button>
             <button 
-              @click="showRegisterModal = true"
+              @click="showRegisterModal = true; registerSource = 'local'; resetRegisterForm()"
               class="text-[10px] text-blue-400 hover:text-blue-300 transition-colors"
             >
               + Add
@@ -268,6 +268,7 @@
               :lineage-paths="lineagePaths"
               :blast-radius-nodes="blastRadiusNodes"
               :focus-node-id="focusFilePath"
+              @node-click="onGraphNodeClick"
             />
           </CanvasWrapper>
         </ClientOnly>
@@ -350,6 +351,7 @@
 
       <div v-if="activeTab === 'settings'" class="space-y-4">
         <SettingsPanel
+          :project-id="workspace.activeProject.value?.id || ''"
           @ingestion-started="handleIngestionJobStarted"
           @ingestion-completed="handleIngestionCompleted"
         />
@@ -421,21 +423,49 @@
     <div 
       v-if="showRegisterModal" 
       class="fixed inset-0 z-50 bg-gray-950/90 backdrop-blur-sm flex items-center justify-center p-4"
-      @click.self="showRegisterModal = false"
+      @click.self="showRegisterModal = false; resetRegisterForm()"
     >
-      <div class="bg-gray-900 border border-gray-800 rounded-xl p-6 w-full max-w-md">
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-6 w-full max-w-lg">
         <div class="flex items-center justify-between mb-4">
           <h3 class="text-lg font-bold text-gray-100">Register New Project</h3>
           <button 
-            @click="showRegisterModal = false"
+            @click="showRegisterModal = false; resetRegisterForm()"
             class="text-gray-400 hover:text-gray-200 transition-colors"
           >
             ✕
           </button>
         </div>
 
+        <!-- Source Tabs -->
+        <div class="flex gap-1 mb-5 bg-gray-950 rounded-lg p-1 border border-gray-800">
+          <button
+            @click="registerSource = 'local'"
+            :class="[
+              'flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-xs font-medium transition-colors',
+              registerSource === 'local'
+                ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
+                : 'text-gray-400 hover:text-gray-300'
+            ]"
+          >
+            <span>📁</span>
+            Local Repository
+          </button>
+          <button
+            @click="registerSource = 'github'"
+            :class="[
+              'flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-xs font-medium transition-colors',
+              registerSource === 'github'
+                ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
+                : 'text-gray-400 hover:text-gray-300'
+            ]"
+          >
+            <span>🐙</span>
+            GitHub Repository
+          </button>
+        </div>
+
         <div class="space-y-4">
-          <!-- Project Name -->
+          <!-- Project Name (shared) -->
           <div>
             <label class="block text-sm text-gray-300 mb-1">Project Name</label>
             <input 
@@ -446,27 +476,70 @@
             />
           </div>
 
-          <!-- Repository Path -->
-          <div>
-            <label class="block text-sm text-gray-300 mb-1">Repository Path</label>
-            <input 
-              v-model="registerForm.repoPath"
-              type="text"
-              placeholder="/home/user/projects/my-repo"
-              class="w-full rounded-lg bg-gray-950 border border-gray-800 text-white px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500/50"
-            />
-            <p class="text-[10px] text-gray-500 mt-1">Must be a valid git repository with .git directory</p>
-          </div>
+          <!-- Local Repository Fields -->
+          <template v-if="registerSource === 'local'">
+            <div>
+              <label class="block text-sm text-gray-300 mb-1">Repository Path</label>
+              <input 
+                v-model="registerForm.repoPath"
+                type="text"
+                placeholder="/home/user/projects/my-repo"
+                class="w-full rounded-lg bg-gray-950 border border-gray-800 text-white px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+              />
+              <p class="text-[10px] text-gray-500 mt-1">Must be a valid git repository with .git directory</p>
+            </div>
+          </template>
+
+          <!-- GitHub Repository Fields -->
+          <template v-if="registerSource === 'github'">
+            <div>
+              <label class="block text-sm text-gray-300 mb-1">GitHub Personal Access Token (PAT)</label>
+              <input 
+                v-model="githubRegister.token"
+                type="password"
+                placeholder="ghp_xxxxxxxxxxxxxxxxxxxxxxxx"
+                class="w-full rounded-lg bg-gray-950 border border-gray-800 text-white px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+              />
+            </div>
+            <div>
+              <label class="block text-sm text-gray-300 mb-1">Repository URL</label>
+              <input 
+                v-model="githubRegister.repoUrl"
+                type="text"
+                placeholder="https://github.com/owner/repository"
+                class="w-full rounded-lg bg-gray-950 border border-gray-800 text-white px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+              />
+            </div>
+            <div>
+              <label class="block text-sm text-gray-300 mb-1">Clone Depth</label>
+              <div class="flex items-center gap-2">
+                <input 
+                  v-model.number="githubRegister.cloneDepth"
+                  type="number"
+                  min="0"
+                  max="100000"
+                  placeholder="50"
+                  class="w-28 rounded-lg bg-gray-950 border border-gray-800 text-white px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+                />
+                <span class="text-[10px] text-gray-500">0 = full history</span>
+              </div>
+            </div>
+          </template>
 
           <!-- Error Message -->
           <div v-if="registerError" class="bg-red-900/20 border border-red-900/50 rounded-lg p-3 text-sm text-red-400">
             {{ registerError }}
           </div>
 
+          <!-- GitHub Validation Status -->
+          <div v-if="githubRegister.validationStatus === 'SUCCESS'" class="bg-emerald-950/30 border border-emerald-800 text-emerald-400 rounded-lg p-3 text-sm">
+            ✓ API Authorization Verified. Connection ready.
+          </div>
+
           <!-- Actions -->
-          <div class="flex gap-3 pt-2">
+          <div v-if="registerSource === 'local'" class="flex gap-3 pt-2">
             <button 
-              @click="showRegisterModal = false"
+              @click="showRegisterModal = false; resetRegisterForm()"
               class="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm font-medium py-2 px-4 rounded-lg transition-colors"
             >
               Cancel
@@ -477,6 +550,29 @@
               class="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors active:scale-95"
             >
               {{ registerLoading ? 'Registering...' : 'Register Project' }}
+            </button>
+          </div>
+
+          <div v-if="registerSource === 'github'" class="flex flex-wrap gap-2 pt-2">
+            <button
+              @click="testGitHubConnection"
+              :disabled="githubRegister.isValidating || githubRegister.isIngesting || !githubRegister.token"
+              class="px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-gray-300 hover:border-gray-400 disabled:opacity-40 transition-colors"
+            >
+              {{ githubRegister.isValidating ? 'Verifying...' : 'Test Connection' }}
+            </button>
+            <button
+              @click="handleRegisterGitHubProject"
+              :disabled="githubRegister.isIngesting || githubRegister.isValidating || !githubRegister.token || !githubRegister.repoUrl || !registerForm.name.trim()"
+              class="flex-1 bg-cyan-950 border border-cyan-700 text-cyan-400 rounded-lg text-sm font-bold py-2 px-4 hover:bg-cyan-900/40 disabled:opacity-40 transition-colors"
+            >
+              {{ githubRegister.isIngesting ? 'Starting Ingestion...' : 'Register & Ingest' }}
+            </button>
+            <button
+              @click="showRegisterModal = false; resetRegisterForm()"
+              class="px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-gray-300 hover:border-gray-400 transition-colors"
+            >
+              Cancel
             </button>
           </div>
         </div>
@@ -509,6 +605,7 @@ const selectedProjectId = ref('')
 const showRegisterModal = ref(false)
 const registerLoading = ref(false)
 const registerError = ref('')
+const registerSource = ref<'local' | 'github'>('local')
 const scanLoading = ref(false)
 const activeJobId = ref('')
 const externalIngestionJobId = ref('')
@@ -518,6 +615,14 @@ let jobPollingInterval: any = null
 const registerForm = reactive({
   name: '',
   repoPath: ''
+})
+const githubRegister = reactive({
+  token: '',
+  repoUrl: '',
+  cloneDepth: 50,
+  isValidating: false,
+  isIngesting: false,
+  validationStatus: 'IDLE' as 'IDLE' | 'SUCCESS' | 'FAILED'
 })
 
 // Telemetry data
@@ -533,6 +638,8 @@ const telemetryLoading = ref(false)
 const isIngestionActive = ref(false)
 const ingestionOverlayProgress = ref(0)
 const ingestionOverlayMessage = ref('')
+const ingestionProjectId = ref('')
+const ingestionProjectName = ref('')
 let ingestionOverlayPollingInterval: any = null
 
 // Git Analytics Controls
@@ -616,12 +723,59 @@ function inspectFile(file: any) {
   showInspector.value = true
 }
 
+function onGraphNodeClick(filePath: string) {
+  // Look up in qualityFiles first for full metadata
+  const fromQuality = qualityFiles.value.find((f: any) => f.path === filePath)
+  if (fromQuality) {
+    selectedFile.value = fromQuality
+  } else {
+    // Build from traverser node data
+    const node = traverserData.nodes.find((n: any) => n.id === filePath)
+    selectedFile.value = {
+      path: filePath,
+      language: node?.lang || 'Unknown',
+      score: node?.score || 0,
+      priority: 'Medium',
+      smell_count: node?.smells || 0,
+      symbol_count: 0,
+      dependency_count: 0,
+      entity_count: 0,
+      file_size: 0,
+      smells: []
+    }
+  }
+  showInspector.value = true
+}
+
 function resetNavigatorState() {
   navigatorResult.value = null
   navigatorJobId.value = ''
   focusFilePath.value = ''
   lineagePaths.value = []
   blastRadiusNodes.value = []
+}
+
+function getActiveProjectId() {
+  return workspace.activeProject.value?.id || ''
+}
+
+function clearProjectScopedData() {
+  qualityFiles.value = []
+  traverserData.nodes = []
+  traverserData.links = []
+  gitControls.branches = []
+  gitControls.commits = []
+  gitControls.selectedBranch = ''
+  gitControls.selectedCommit = ''
+  gitControls.diffData = null
+  telemetryLogs.value = []
+  telemetryAggregates.total_input_tokens = 0
+  telemetryAggregates.total_output_tokens = 0
+  telemetryAggregates.total_estimated_cost = 0
+  workspace.indexStats.files = 0
+  workspace.indexStats.deps = 0
+  workspace.indexStats.languages = 0
+  workspace.indexStats.symbols = 0
 }
 
 function handleNavigatorResult(result: any) {
@@ -683,6 +837,13 @@ function startIngestionOverlayPolling(jobId: string) {
             stopIngestionOverlayPolling()
             ingestionOverlayProgress.value = 100
             ingestionOverlayMessage.value = 'Ingestion complete! Switching workspace...'
+            // Automatically switch workspace to the new project
+            if (ingestionProjectId.value) {
+              handleIngestionCompleted({
+                project_id: ingestionProjectId.value,
+                project_name: ingestionProjectName.value
+              })
+            }
           } else if (job.status === 'failed') {
             stopIngestionOverlayPolling()
             isIngestionActive.value = false
@@ -726,19 +887,13 @@ async function handleIngestionCompleted(data: { project_id: string; project_name
     // Switch to traverser tab
     activeTab.value = 'traverser'
 
-    // Trigger automatic rescan to populate quality_files for topology graph
-    // The ingestion clone + initial scan may not fully populate quality_files
-    // (especially with shallow clones), so a rescan ensures complete data
-    if (workspace.activeProject.value?.id) {
-      console.error('[Dashboard] Triggering automatic rescan for:', data.project_name)
-      await rescanProject()
-    } else {
-      // Fallback: just refresh data without rescan
-      await fetchEngineTelemetry()
-      await fetchQualityData()
-      await fetchTopologyData()
-      await fetchGitBranches()
-    }
+    // Refresh data directly — the ingestion worker already ran scan-all
+    // No redundant rescan needed (avoids race condition clearing quality_files)
+    console.error('[Dashboard] Refreshing project data after ingestion:', data.project_name)
+    await fetchEngineTelemetry(getActiveProjectId())
+    await fetchQualityData()
+    await fetchTopologyData()
+    await fetchGitBranches()
 
     console.error('[Dashboard] Workspace switched to project:', data.project_name)
   } catch (err) {
@@ -756,9 +911,12 @@ function focusOnNode(path: string) {
 
 async function fetchQualityData() {
   try {
-    const projectId = workspace.activeProject.value?.id
-    const query = projectId ? `?project_id=${projectId}` : ''
-    const response = await fetch(`/api/v1/quality${query}`)
+    const projectId = getActiveProjectId()
+    if (!projectId) {
+      qualityFiles.value = []
+      return
+    }
+    const response = await fetch(`/api/v1/quality?project_id=${encodeURIComponent(projectId)}`)
     if (!response.ok) throw new Error(`Quality API returned ${response.status}`)
     const data = await response.json()
     if (data.success) {
@@ -771,8 +929,16 @@ async function fetchQualityData() {
 
 async function fetchTopologyData() {
   try {
-    const projectId = workspace.activeProject.value?.id
-    const query = projectId ? `?project_id=${projectId}` : ''
+    const projectId = getActiveProjectId()
+    if (!projectId) {
+      traverserData.nodes = []
+      traverserData.links = []
+      return
+    }
+    const params = new URLSearchParams()
+    params.set('project_id', projectId)
+    if (gitControls.selectedCommit) params.set('commit', gitControls.selectedCommit)
+    const query = params.toString() ? `?${params.toString()}` : ''
     const response = await fetch(`/api/v1/topology${query}`)
     if (!response.ok) throw new Error(`Topology API returned ${response.status}`)
     const data = await response.json()
@@ -792,6 +958,11 @@ watch(() => workspace.activeProject.value?.id, () => {
 // Git Analytics Functions
 async function fetchGitBranches() {
   try {
+    if (!getActiveProjectId()) {
+      gitControls.branches = []
+      gitControls.commits = []
+      return
+    }
     const response = await fetch('/api/v1/git/branches')
     if (!response.ok) throw new Error(`Git branches API returned ${response.status}`)
     const result = await response.json()
@@ -811,6 +982,10 @@ async function fetchGitBranches() {
 
 async function fetchGitCommits(branch: string) {
   try {
+    if (!getActiveProjectId()) {
+      gitControls.commits = []
+      return
+    }
     const response = await fetch(`/api/v1/git/commits?branch=${branch}&limit=${gitControls.commitLimit}`)
     if (!response.ok) throw new Error(`Git commits API returned ${response.status}`)
     const result = await response.json()
@@ -825,6 +1000,10 @@ async function fetchGitCommits(branch: string) {
 
 async function fetchCommitDiff(commitHash: string) {
   try {
+    if (!getActiveProjectId()) {
+      gitControls.diffData = null
+      return
+    }
     const response = await fetch(`/api/v1/git/diff?commit=${commitHash}`)
     if (!response.ok) throw new Error(`Git diff API returned ${response.status}`)
     const result = await response.json()
@@ -851,8 +1030,10 @@ async function onCommitSelect() {
   if (gitControls.selectedCommit) {
     console.error('[Dashboard] Commit selected:', gitControls.selectedCommit)
     await fetchCommitDiff(gitControls.selectedCommit)
+    await fetchTopologyData()
   } else {
     gitControls.diffData = null
+    await fetchTopologyData()
   }
 }
 
@@ -872,6 +1053,7 @@ async function refreshGitData() {
     if (gitControls.selectedCommit) {
       await fetchCommitDiff(gitControls.selectedCommit)
     }
+    await fetchTopologyData()
     console.error('[Dashboard] Git data refreshed')
   } catch (err) {
     console.error('[Dashboard] Failed to refresh git data:', err)
@@ -889,17 +1071,10 @@ async function onProjectChange() {
     try {
       await workspace.switchProjectWorkspace(selectedProjectId.value)
       
-      // Clear all existing data
-      qualityFiles.value = []
-      traverserData.nodes = []
-      traverserData.links = []
-      gitControls.branches = []
-      gitControls.commits = []
-      gitControls.selectedCommit = ''
-      gitControls.diffData = null
+      clearProjectScopedData()
       
       // Fetch fresh data for new project
-      await fetchEngineTelemetry()
+      await fetchEngineTelemetry(getActiveProjectId())
       await fetchQualityData()
       await fetchTopologyData()
       await fetchGitBranches()
@@ -908,6 +1083,12 @@ async function onProjectChange() {
     } catch (err) {
       console.error('[Dashboard] Failed to switch workspace:', err)
     }
+  } else {
+    workspace.activeProject.value = null
+    if (import.meta.client) {
+      localStorage.removeItem('wikihub_active_project_id')
+    }
+    clearProjectScopedData()
   }
 }
 
@@ -956,8 +1137,7 @@ async function handleRegisterProject() {
     
     // Close modal and reset form
     showRegisterModal.value = false
-    registerForm.name = ''
-    registerForm.repoPath = ''
+    resetRegisterForm()
     
     console.error('[Dashboard] Project registered successfully')
   } catch (err: any) {
@@ -966,6 +1146,105 @@ async function handleRegisterProject() {
   } finally {
     registerLoading.value = false
   }
+}
+
+function normalizeGithubUrl(value: string): string {
+  const candidate = String(value || '').trim().replace(/\/+$/, '')
+  if (!candidate) throw new Error('Repository URL is required')
+  if (!/^https:\/\/github\.com\//i.test(candidate)) throw new Error('Repository URL must be a GitHub HTTPS URL')
+  return candidate
+}
+
+async function testGitHubConnection() {
+  if (!githubRegister.token) return
+  githubRegister.isValidating = true
+  githubRegister.validationStatus = 'IDLE'
+  registerError.value = ''
+
+  try {
+    const res = await fetch('/api/v1/github/test-connection', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ github_token: githubRegister.token, repository_url: githubRegister.repoUrl })
+    })
+    const payload = await res.json()
+    if (res.ok && payload.success) {
+      githubRegister.validationStatus = 'SUCCESS'
+    } else {
+      githubRegister.validationStatus = 'FAILED'
+      registerError.value = payload.error || payload.message || 'Connection failed'
+    }
+  } catch (err: any) {
+    githubRegister.validationStatus = 'FAILED'
+    registerError.value = err?.message || 'Network error'
+  } finally {
+    githubRegister.isValidating = false
+  }
+}
+
+async function handleRegisterGitHubProject() {
+  registerError.value = ''
+  if (!registerForm.name.trim()) {
+    registerError.value = 'Project name is required'
+    return
+  }
+  if (!githubRegister.token) {
+    registerError.value = 'GitHub token is required'
+    return
+  }
+  if (!githubRegister.repoUrl) {
+    registerError.value = 'Repository URL is required'
+    return
+  }
+
+  githubRegister.isIngesting = true
+
+  try {
+    const normalizedUrl = normalizeGithubUrl(githubRegister.repoUrl)
+    const res = await fetch('/api/v1/project/ingest-github', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        github_token: githubRegister.token,
+        repository_url: normalizedUrl,
+        clone_depth: githubRegister.cloneDepth || 50
+      })
+    })
+    const payload = await res.json()
+    if (res.ok && payload.success && payload.data?.job_id) {
+      showRegisterModal.value = false
+      resetRegisterForm()
+
+      // Store project info for completion handler
+      ingestionProjectId.value = payload.data.project_id || ''
+      ingestionProjectName.value = payload.data.project_name || ''
+
+      // Show the ingestion overlay and poll
+      externalIngestionJobId.value = payload.data.job_id
+      isIngestionActive.value = true
+      ingestionOverlayProgress.value = 0
+      ingestionOverlayMessage.value = 'Starting GitHub ingestion...'
+      startIngestionOverlayPolling(payload.data.job_id)
+    } else {
+      registerError.value = payload.error || payload.message || 'Failed to start ingestion'
+    }
+  } catch (err: any) {
+    registerError.value = err?.message || 'Failed to dispatch ingestion'
+  } finally {
+    githubRegister.isIngesting = false
+  }
+}
+
+function resetRegisterForm() {
+  registerForm.name = ''
+  registerForm.repoPath = ''
+  githubRegister.token = ''
+  githubRegister.repoUrl = ''
+  githubRegister.cloneDepth = 50
+  githubRegister.isValidating = false
+  githubRegister.isIngesting = false
+  githubRegister.validationStatus = 'IDLE'
+  registerError.value = ''
 }
 
 async function rescanProject() {
@@ -1050,15 +1329,11 @@ async function deleteProject() {
       // Clear active project and selected ID
       workspace.activeProject.value = null
       selectedProjectId.value = ''
+      if (import.meta.client) {
+        localStorage.removeItem('wikihub_active_project_id')
+      }
       
-      // Clear all displayed data
-      qualityFiles.value = []
-      traverserData.nodes = []
-      traverserData.links = []
-      gitControls.branches = []
-      gitControls.commits = []
-      gitControls.selectedCommit = ''
-      gitControls.diffData = null
+      clearProjectScopedData()
       
       // Refresh project list
       await workspace.fetchProjects()
@@ -1104,7 +1379,7 @@ function startJobPolling() {
             console.error('[Dashboard] Scan completed!')
             
             // Refresh all data
-            await fetchEngineTelemetry()
+            await fetchEngineTelemetry(getActiveProjectId())
             await fetchQualityData()
             await fetchTopologyData()
             await fetchGitBranches()
@@ -1144,21 +1419,11 @@ function resetWorkspace() {
   
   // Clear active project
   workspace.activeProject.value = null
+  if (import.meta.client) {
+    localStorage.removeItem('wikihub_active_project_id')
+  }
   
-  // Clear all data
-  qualityFiles.value = []
-  traverserData.nodes = []
-  traverserData.links = []
-  gitControls.branches = []
-  gitControls.commits = []
-  gitControls.selectedCommit = ''
-  gitControls.diffData = null
-  
-  // Reset stats
-  workspace.indexStats.files = 0
-  workspace.indexStats.deps = 0
-  workspace.indexStats.languages = 0
-  workspace.indexStats.symbols = 0
+  clearProjectScopedData()
   
   // Stop any polling
   stopJobPolling()
@@ -1208,6 +1473,23 @@ function formatTelemetryTime(dateStr: string | undefined): string {
     return dateStr || ''
   }
 }
+
+// Load persisted GitHub token from vault when GitHub tab is selected
+watch(registerSource, async (source) => {
+  if (source === 'github' && !githubRegister.token) {
+    try {
+      const res = await fetch('/api/v1/config')
+      if (res.ok) {
+        const payload = await res.json()
+        if (payload.success && payload.data?.github?.token) {
+          githubRegister.token = payload.data.github.token
+        }
+      }
+    } catch (err) {
+      // Silently ignore
+    }
+  }
+})
 
 // Watch tab changes to refresh telemetry when analytics tab is selected
 watch(activeTab, (newTab) => {

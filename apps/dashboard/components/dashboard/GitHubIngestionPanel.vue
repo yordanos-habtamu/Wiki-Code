@@ -92,7 +92,7 @@
 </template>
 
 <script>
-import { defineComponent, ref, onBeforeUnmount } from 'vue'
+import { defineComponent, ref, onBeforeUnmount, onMounted } from 'vue'
 
 export default defineComponent({
   name: 'GitHubIngestionPanel',
@@ -117,6 +117,21 @@ export default defineComponent({
     const ingestionProjectId = ref('')
     const ingestionProjectName = ref('')
     let pollingInterval = null
+
+    // Load persisted GitHub token from vault config
+    const loadGithubToken = async () => {
+      try {
+        const res = await fetch('/api/v1/config')
+        if (res.ok) {
+          const payload = await res.json()
+          if (payload.success && payload.data?.github?.token) {
+            githubToken.value = payload.data.github.token
+          }
+        }
+      } catch (err) {
+        // Silently ignore - token will just be empty
+      }
+    }
 
     const normalizeRepoUrl = (value) => {
       const candidate = String(value || '').trim().replace(/\/+$/, '')
@@ -257,6 +272,10 @@ export default defineComponent({
       }
       // Note: do NOT set isIngesting = false here; polling will handle it
     }
+
+    onMounted(() => {
+      loadGithubToken()
+    })
 
     onBeforeUnmount(() => {
       if (pollingInterval) {

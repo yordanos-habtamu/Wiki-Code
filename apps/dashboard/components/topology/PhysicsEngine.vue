@@ -34,13 +34,38 @@
       </div>
     </div>
 
-    <!-- Language Legend -->
-    <div class="absolute bottom-4 left-4 z-10 bg-gray-900/95 border border-gray-800 rounded-lg p-3 backdrop-blur-sm">
-      <div class="text-xs font-medium text-gray-300 mb-2">Languages</div>
-      <div class="grid grid-cols-2 gap-1.5">
-        <div v-for="(color, lang) in activeLanguages" :key="lang" class="flex items-center gap-2">
-          <div class="w-3 h-3 rounded-full" :style="{ backgroundColor: color }"></div>
-          <span class="text-[10px] text-gray-400 capitalize">{{ lang }}</span>
+    <!-- Legend Panel -->
+    <div class="absolute bottom-4 left-4 z-10 space-y-2">
+      <!-- Language Legend -->
+      <div class="bg-gray-900/95 border border-gray-800 rounded-lg p-3 backdrop-blur-sm">
+        <div class="text-xs font-medium text-gray-300 mb-2">Languages</div>
+        <div class="grid grid-cols-2 gap-1.5">
+          <div v-for="(color, lang) in activeLanguages" :key="lang" class="flex items-center gap-2">
+            <div class="w-3 h-3 rounded-full" :style="{ backgroundColor: color }"></div>
+            <span class="text-[10px] text-gray-400 capitalize">{{ lang }}</span>
+          </div>
+        </div>
+      </div>
+      <!-- Link Legend -->
+      <div class="bg-gray-900/95 border border-gray-800 rounded-lg p-3 backdrop-blur-sm">
+        <div class="text-xs font-medium text-gray-300 mb-2">Relationships</div>
+        <div class="space-y-1.5">
+          <div class="flex items-center gap-2">
+            <svg width="20" height="4" class="overflow-visible"><line x1="0" y1="2" x2="20" y2="2" stroke="#1e293b" stroke-width="2"/></svg>
+            <span class="text-[10px] text-gray-400">Same-language</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <svg width="20" height="4" class="overflow-visible"><line x1="0" y1="2" x2="20" y2="2" stroke="#ef4444" stroke-width="2.5" stroke-dasharray="4,4"/></svg>
+            <span class="text-[10px] text-gray-400">Cross-language</span>
+          </div>
+          <div v-if="lineagePaths && lineagePaths.length > 0" class="flex items-center gap-2">
+            <svg width="20" height="6" class="overflow-visible"><line x1="0" y1="3" x2="20" y2="3" stroke="#06b6d4" stroke-width="2.5" marker-end="url(#lineage-arrow)"/></svg>
+            <span class="text-[10px] text-gray-400">Lineage trace</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <svg width="20" height="12" class="overflow-visible"><circle cx="10" cy="6" r="5" fill="none" stroke="#ef4444" stroke-width="2"/></svg>
+            <span class="text-[10px] text-gray-400">Blast radius</span>
+          </div>
         </div>
       </div>
     </div>
@@ -157,7 +182,8 @@
             v-for="(node, index) in nodes" 
             :key="'node-' + index"
             :transform="`translate(${node.x}, ${node.y})`"
-            class="cursor-grab active:cursor-grabbing"
+            class="cursor-pointer"
+            @click="handleNodeClick(index)"
             @mousedown="startNodeDrag($event, index)"
             @touchstart="startNodeDrag($event, index)"
           >
@@ -238,6 +264,10 @@ interface LineagePath {
   target: string
   direction: string
 }
+
+const emit = defineEmits<{
+  'node-click': [filePath: string]
+}>()
 
 const props = defineProps<{
   nodes: Node[]
@@ -617,6 +647,14 @@ function getFileName(path: string): string {
   const fileName = parts[parts.length - 1]
   // Truncate if too long
   return fileName.length > 20 ? fileName.substring(0, 17) + '...' : fileName
+}
+
+// Node click handler
+function handleNodeClick(index: number) {
+  const node = props.nodes[index]
+  if (node && node.id) {
+    emit('node-click', node.id)
+  }
 }
 
 // Zoom controls

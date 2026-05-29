@@ -171,7 +171,7 @@
     </div>
 
     <GitHubIngestionPanel
-      :project-id="projectId"
+      :project-id="props.projectId || ''"
       @ingestion-started="emit('ingestion-started', $event)"
       @ingestion-completed="emit('ingestion-completed', $event)"
       @error="githubError = $event"
@@ -249,6 +249,9 @@
 import { ref, reactive, onMounted } from 'vue'
 import ModelSelector from '../config/ModelSelector.vue'
 import GitHubIngestionPanel from './GitHubIngestionPanel.vue'
+const props = defineProps<{
+  projectId?: string
+}>()
 const emit = defineEmits(['ingestion-started', 'ingestion-completed'])
 const providers = reactive({
   openrouter: { apiKey: '', defaultModel: '' },
@@ -269,27 +272,12 @@ const systemSettings = reactive({
   tokenBudget: '100000'
 })
 
-const projectId = ref<string | null>(null)
 const githubError = ref('')
 
 // Load saved configurations on mount
 onMounted(() => {
   loadProviderConfigs()
-  fetchActiveWorkspace()
 })
-
-async function fetchActiveWorkspace() {
-  try {
-    const response = await fetch('/api/v1/workspace/active')
-    if (!response.ok) return
-    const payload = await response.json()
-    if (payload.success && payload.data && payload.data.id) {
-      projectId.value = payload.data.id
-    }
-  } catch (err) {
-    console.error('[Settings] Failed to load active workspace', err)
-  }
-}
 
 async function loadProviderConfigs() {
   try {
@@ -428,7 +416,11 @@ async function saveSystemSettings() {
   try {
     const config = {
       providers: {
-        openrouter: { apiKey: providers.openrouter.apiKey, status: providers.openrouter.apiKey ? 'configured' : 'not_configured' },
+        openrouter: {
+          apiKey: providers.openrouter.apiKey,
+          defaultModel: providers.openrouter.defaultModel,
+          status: providers.openrouter.apiKey ? 'configured' : 'not_configured'
+        },
         gemini: { apiKey: providers.gemini.apiKey, status: providers.gemini.apiKey ? 'configured' : 'not_configured' },
         deepseek: { apiKey: providers.deepseek.apiKey, status: providers.deepseek.apiKey ? 'configured' : 'not_configured' },
         qwen: { apiKey: providers.qwen.apiKey, status: providers.qwen.apiKey ? 'configured' : 'not_configured' }

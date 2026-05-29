@@ -225,6 +225,9 @@ export function useWorkspaceState() {
       
       if (result.success) {
         activeProject.value = result.data
+        if (import.meta.client) {
+          localStorage.setItem('wikihub_active_project_id', result.data.id)
+        }
         console.error(`[Workspace] Switched to: ${result.data.name}`)
         
         // Clear existing graph state
@@ -259,7 +262,18 @@ export function useWorkspaceState() {
         const result = await response.json()
         if (result.success && result.data.id) {
           activeProject.value = result.data
+          if (import.meta.client) {
+            localStorage.setItem('wikihub_active_project_id', result.data.id)
+          }
           console.error(`[Workspace] Restored active project: ${result.data.name}`)
+          return
+        }
+      }
+
+      if (import.meta.client) {
+        const cachedProjectId = localStorage.getItem('wikihub_active_project_id')
+        if (cachedProjectId && projectsList.value.some(project => project.id === cachedProjectId)) {
+          await switchProjectWorkspace(cachedProjectId)
         }
       }
     } catch (err) {
