@@ -7,7 +7,6 @@ import os
 import sys
 import sqlite3
 import json
-import traceback
 from typing import List, Dict, Any, Optional, Set
 
 # Project root discovery
@@ -143,7 +142,6 @@ class NavigatorAgent:
         try:
             cursor = conn.cursor()
             matches = []
-            query_lower = query.lower()
             query_tokens = self._tokenize(query)
 
             # Try semantic_artifacts table first if it exists

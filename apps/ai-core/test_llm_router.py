@@ -46,7 +46,7 @@ def test_encryption():
         decrypted = encryptor.decrypt_data(encrypted)
         
         assert decrypted == original, f"Decryption failed: {decrypted} != {original}"
-        print(f"✓ Data encryption/decryption successful", file=sys.stderr)
+        print("✓ Data encryption/decryption successful", file=sys.stderr)
         
         # Test file encryption
         plaintext_file = os.path.join(test_dir, "test_providers.json")
@@ -64,7 +64,7 @@ def test_encryption():
         
         success = encryptor.encrypt_file(plaintext_file, encrypted_file)
         assert success, "File encryption failed"
-        print(f"✓ File encryption successful", file=sys.stderr)
+        print("✓ File encryption successful", file=sys.stderr)
         
         # Verify decryption
         decrypted_text = encryptor.decrypt_file(encrypted_file)
@@ -72,7 +72,7 @@ def test_encryption():
         
         decrypted_data = json.loads(decrypted_text)
         assert decrypted_data["gemini"]["api_key"] == "test-gemini-key"
-        print(f"✓ File decryption successful", file=sys.stderr)
+        print("✓ File decryption successful", file=sys.stderr)
         
         print("✓ All encryption tests passed", file=sys.stderr)
         
@@ -98,13 +98,13 @@ def test_provider_config():
         assert "qwen" in sample
         assert "openrouter" in sample
         assert "custom" in sample
-        print(f"✓ Sample config contains all 5 providers", file=sys.stderr)
+        print("✓ Sample config contains all 5 providers", file=sys.stderr)
         
         # Test plaintext save/load
         config.save_providers(sample, encrypt=False)
         loaded = config.load_providers()
         assert len(loaded) == 5, f"Expected 5 providers, got {len(loaded)}"
-        print(f"✓ Plaintext save/load successful", file=sys.stderr)
+        print("✓ Plaintext save/load successful", file=sys.stderr)
         
         # Test encrypted save/load
         config2 = ProviderConfig(config_dir=test_config_dir)
@@ -113,23 +113,23 @@ def test_provider_config():
         # Verify encrypted file exists
         encrypted_path = os.path.join(test_config_dir, "providers.json.enc")
         assert os.path.exists(encrypted_path), "Encrypted file not created"
-        print(f"✓ Encrypted file created", file=sys.stderr)
+        print("✓ Encrypted file created", file=sys.stderr)
         
         # Load from encrypted file
         config3 = ProviderConfig(config_dir=test_config_dir)
         loaded_encrypted = config3.load_providers()
         assert len(loaded_encrypted) == 5, f"Expected 5 providers from encrypted, got {len(loaded_encrypted)}"
-        print(f"✓ Encrypted save/load successful", file=sys.stderr)
+        print("✓ Encrypted save/load successful", file=sys.stderr)
         
         # Test provider retrieval
         gemini_config = config3.get_provider("gemini")
         assert gemini_config is not None
         assert "api_key" in gemini_config
-        print(f"✓ Provider retrieval successful", file=sys.stderr)
+        print("✓ Provider retrieval successful", file=sys.stderr)
         
         # Test validation
         config3.validate_config()
-        print(f"✓ Config validation successful", file=sys.stderr)
+        print("✓ Config validation successful", file=sys.stderr)
         
         print("✓ All provider config tests passed", file=sys.stderr)
         
@@ -163,7 +163,7 @@ def test_llm_router_initialization():
         provider, model = router._resolve_provider_and_model("gemini/gemini-pro")
         assert provider == "gemini"
         assert model == "gemini-pro"
-        print(f"✓ Provider/model resolution: gemini/gemini-pro", file=sys.stderr)
+        print("✓ Provider/model resolution: gemini/gemini-pro", file=sys.stderr)
         
         provider, model = router._resolve_provider_and_model("deepseek-chat")
         assert provider in ["deepseek", "gemini", "qwen", "openrouter", "custom"]
@@ -172,9 +172,9 @@ def test_llm_router_initialization():
         # Test error handling for invalid provider
         try:
             router._resolve_provider_and_model("invalid/model")
-            print(f"✗ Should have raised error for invalid provider", file=sys.stderr)
-        except:
-            print(f"✓ Invalid provider correctly rejected", file=sys.stderr)
+            print("✗ Should have raised error for invalid provider", file=sys.stderr)
+        except Exception:
+            print("✓ Invalid provider correctly rejected", file=sys.stderr)
         
         print("✓ All LLMRouter initialization tests passed", file=sys.stderr)
         
@@ -204,7 +204,7 @@ def test_normalized_response():
     assert response.total_tokens == 150
     assert response.latency_ms == 234.5
     assert response.provider == "test-provider"
-    print(f"✓ NormalizedResponse structure validated", file=sys.stderr)
+    print("✓ NormalizedResponse structure validated", file=sys.stderr)
     
     # Test serialization
     response_dict = {
@@ -219,7 +219,7 @@ def test_normalized_response():
     }
     
     assert response_dict["total_tokens"] == 150
-    print(f"✓ NormalizedResponse serialization works", file=sys.stderr)
+    print("✓ NormalizedResponse serialization works", file=sys.stderr)
     
     print("✓ All NormalizedResponse tests passed", file=sys.stderr)
 

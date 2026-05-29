@@ -47,7 +47,6 @@ def main():
     parser.add_argument('--archive-root', help='Override archive output root')
     args = parser.parse_args()
 
-    repo_path = args.repo_path
     db_path = args.db or os.path.join(project_root, 'apps', 'cli', 'hub.db')
     project_id = args.project_id
     archive_root = args.archive_root

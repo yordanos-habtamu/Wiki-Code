@@ -9,7 +9,6 @@ import sqlite3
 import json
 import traceback
 from typing import List, Dict, Any, Optional
-import importlib.util
 
 # Project root discovery
 current_file = os.path.abspath(__file__)
@@ -258,8 +257,6 @@ class ArchivistAgent:
         return '\n'.join(lines)
 
     def _build_onboarding_brief(self, artifacts: List[Dict[str, Any]], edges: List[Dict[str, Any]]) -> str:
-        sources = self._calculate_lineage_sources_and_sinks(edges)['sources']
-        sinks = self._calculate_lineage_sources_and_sinks(edges)['sinks']
         critical_path = self._calculate_critical_path(artifacts, edges)
         drift_warnings = self._fetch_drift_warnings()
 

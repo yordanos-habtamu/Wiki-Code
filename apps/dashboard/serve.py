@@ -556,7 +556,6 @@ def handle_topology(query_params=None):
         radius = min(canvas_width, canvas_height) * 0.35
         
         for idx, file in enumerate(files):
-            angle = (idx / max(len(files), 1)) * 2 * 3.14159 - 3.14159 / 2
             x = center_x + radius * 0.5
             y = center_y + radius * 0.5
             
@@ -2031,7 +2030,7 @@ def monitor_stderr_stream(job_id, process):
                         try:
                             progress_str = line.split('%')[0].split('[')[-1]
                             job_registry[job_id]["progress"] = int(progress_str)
-                        except:
+                        except Exception:
                             pass
     except Exception as e:
         log(f"Error monitoring stderr for job {job_id}: {e}")
@@ -2735,7 +2734,7 @@ def handle_git_commits(branch="main", limit=50):
         # Format: hash|author|date|message
         log_output = run_git_command([
             'log', 
-            f'--format=%H|%an|%ai|%s',
+            '--format=%H|%an|%ai|%s',
             f'-{limit}',
             branch
         ])
@@ -3025,10 +3024,10 @@ if __name__ == "__main__":
     log(f"Starting WikiHub Dashboard Server on port {PORT}")
     log(f"API server running on port {PORT} (static files served separately by static-server)")
     log(f"Database path: {DB_PATH}")
-    log(f"API Endpoints:")
-    log(f"  GET /api/v1/stats    - Aggregate metrics")
-    log(f"  GET /api/v1/quality  - File quality analysis")
-    log(f"  GET /api/v1/topology - Dependency graph")
+    log("API Endpoints:")
+    log("  GET /api/v1/stats    - Aggregate metrics")
+    log("  GET /api/v1/quality  - File quality analysis")
+    log("  GET /api/v1/topology - Dependency graph")
     log("")
     
     # Ensure DB schema and migration run

@@ -226,7 +226,7 @@ class TestImpactAnalysisGraph(unittest.TestCase):
                 token_budget_max=100000
             )
             
-            final_state = pipeline.execute(state)
+            pipeline.execute(state)
             
             # Check that stdout is empty
             stdout_output = sys.stdout.getvalue()

@@ -5,7 +5,6 @@ Loads the MCP app programmatically and tests all tools without stdio loops.
 
 import os
 import sys
-import json
 
 # Redirect stdout to stderr to enforce zero stdout pollution
 sys.stdout = sys.stderr
@@ -116,7 +115,7 @@ def test_search_codebase_abstracts():
                         file=sys.stderr
                     )
             else:
-                print(f"  No matches found", file=sys.stderr)
+                print("  No matches found", file=sys.stderr)
         
         print("\n✓ search_codebase_abstracts test passed", file=sys.stderr)
         return True
@@ -170,7 +169,7 @@ def test_get_token_telemetry():
             
             # Display per-provider metrics
             if len(telemetry["per_provider_metrics"]) > 0:
-                print(f"  Provider breakdown:", file=sys.stderr)
+                print("  Provider breakdown:", file=sys.stderr)
                 for metric in telemetry["per_provider_metrics"]:
                     print(
                         f"    - {metric['provider']}: "
@@ -179,7 +178,7 @@ def test_get_token_telemetry():
                         file=sys.stderr
                     )
             else:
-                print(f"  No provider metrics available (no LLM calls logged yet)", file=sys.stderr)
+                print("  No provider metrics available (no LLM calls logged yet)", file=sys.stderr)
         
         print("\n✓ get_token_telemetry test passed", file=sys.stderr)
         return True
@@ -255,7 +254,7 @@ def test_audit_code_quality():
                 assert 0.0 <= result["quality_score"] <= 10.0, "quality_score should be 0-10"
             assert isinstance(result["detected_smells"], list), "detected_smells should be list"
             assert isinstance(result["proposed_architecture"], list), "proposed_architecture should be list"
-            assert result["done_condition"] == True, "Audit should complete successfully"
+            assert result["done_condition"], "Audit should complete successfully"
             
             print(
                 f"  Quality score: {result['quality_score']}/10.0",
@@ -276,7 +275,7 @@ def test_audit_code_quality():
             
             # Display detected smells
             if len(result["detected_smells"]) > 0:
-                print(f"  Detected smells:", file=sys.stderr)
+                print("  Detected smells:", file=sys.stderr)
                 for smell in result["detected_smells"]:
                     print(
                         f"    - [{smell['severity']}] {smell['type']}: {smell['description']}",
@@ -326,7 +325,7 @@ def test_map_blast_radius():
             assert result["blast_radius_classification"] in [
                 "isolated", "low", "medium", "high", "critical"
             ], "Invalid classification"
-            assert result["done_condition"] == True, "Analysis should complete successfully"
+            assert result["done_condition"], "Analysis should complete successfully"
             
             print(
                 f"  Impacted nodes: {len(result['impacted_nodes'])}",
@@ -343,7 +342,7 @@ def test_map_blast_radius():
             
             # Display impacted nodes
             if len(result["impacted_nodes"]) > 0:
-                print(f"  Impacted nodes:", file=sys.stderr)
+                print("  Impacted nodes:", file=sys.stderr)
                 for node in result["impacted_nodes"]:
                     print(
                         f"    - Depth {node['depth']}: {node['relative_path']} ({node['language']})",

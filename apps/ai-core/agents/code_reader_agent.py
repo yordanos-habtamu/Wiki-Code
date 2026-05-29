@@ -114,7 +114,7 @@ class CodeReaderAgent:
             reasoning_steps.append("Using previously retrieved context")
         
         # Step 5: Format context for LLM (token-compressed abstracts only)
-        context_summary = self._format_context_summary(retrieved_abstracts)
+        self._format_context_summary(retrieved_abstracts)
         
         reasoning_steps.append(
             f"Context summary prepared: {len(retrieved_abstracts)} files indexed"

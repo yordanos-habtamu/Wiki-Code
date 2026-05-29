@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Sample web application for testing Git Extraction Engine"""
+from datetime import datetime
 from flask import Flask, jsonify, request
 from utils import hash_password, validate_email, sanitize_input
 
