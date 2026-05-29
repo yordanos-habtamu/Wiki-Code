@@ -4,6 +4,19 @@ WikiHub is a local, hybrid code intelligence engine engineered to solve token ov
 
 ---
 
+## Screenshots
+
+| | |
+|---|---|
+| **Dashboard** | **Code Traversal** |
+| ![Dashboard](screenshots/dashboard.png) | ![Code Traversal](screenshots/code_traversal.png) |
+| **Quality Matrix** | **Token Telemetry** |
+| ![Quality Matrix](screenshots/quality_matirx.png) | ![Token Telemetry](screenshots/token_telemetry.png) |
+| **Configuration Vault** | **Login** |
+| ![Configuration Vault](screenshots/configuration_vault.png) | ![Login](screenshots/login.png) |
+
+---
+
 ## Key Features
 
 * **Token-Compressed Context Maps:** Re-parses thousands of raw source lines into lightweight file abstracts, eliminating high token overhead.
@@ -40,3 +53,9 @@ wikihub/
     ├── encryption/      # Configuration & API key at-rest encryption utilities
     ├── logging/         # Stream-isolated structured log managers
     └── telemetry/       # Performance metric collection frameworks
+
+---
+
+## License
+
+[MIT](LICENSE)
