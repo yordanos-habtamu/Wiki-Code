@@ -38,8 +38,8 @@ except ImportError:
     print("Error: fastmcp package not installed. Run: pip install fastmcp", file=sys.stderr)
     sys.exit(1)
 
-# Initialize FastMCP Server
-mcp = FastMCP("WikiHub-Core-Engine")
+# Initialize FastMCP Server (port is overridden by --port CLI arg at runtime)
+mcp = FastMCP("WikiHub-Core-Engine", port=7000)
 
 
 # ============================================================================
@@ -503,9 +503,31 @@ def map_blast_radius(
 # ============================================================================
 
 if __name__ == "__main__":
-    print("Starting WikiHub MCP Server on stdio...", file=sys.stderr)
+    import argparse
+    parser = argparse.ArgumentParser(description="WikiHub MCP Server")
+    parser.add_argument(
+        '--transport',
+        choices=['stdio', 'sse'],
+        default='stdio',
+        help='Transport protocol (stdio for AI editor pipes, sse for HTTP)'
+    )
+    parser.add_argument(
+        '--port',
+        type=int,
+        default=None,
+        help='HTTP port for SSE transport (default: 7000)'
+    )
+    args = parser.parse_args()
+
+    if args.transport == 'sse':
+        mcp.host = '0.0.0.0'
+        if args.port is not None:
+            mcp.port = args.port
+
+    transport_desc = f"SSE on port {mcp.port}" if args.transport == 'sse' else "stdio"
+    print(f"Starting WikiHub MCP Server on {transport_desc}...", file=sys.stderr)
     print(f"Database path: {db_path}", file=sys.stderr)
     print(f"ChromaDB path: {chromadb_dir}", file=sys.stderr)
     
     # Run the MCP server (blocks until termination)
-    mcp.run(transport="stdio")
+    mcp.run(transport=args.transport)
