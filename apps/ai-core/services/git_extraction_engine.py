@@ -697,55 +697,55 @@ class GitExtractionEngine:
         print(f"[GitEngine] Audit complete for {target_file}", file=sys.stderr, flush=True)
 
         return audit_data
-def _persist_quality_file_to_db(self, audit_data: Dict):
-    """
-    Persist quality audit metadata for a file.
-    """
-    try:
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
 
-        # Ensure entity_count and file_size columns exist
-        cursor.execute("PRAGMA table_info(quality_files)")
-        cols = [r[1] for r in cursor.fetchall()]
-        if 'entity_count' not in cols:
-            cursor.execute("ALTER TABLE quality_files ADD COLUMN entity_count INTEGER DEFAULT 0")
-        if 'file_size' not in cols:
-            cursor.execute("ALTER TABLE quality_files ADD COLUMN file_size INTEGER DEFAULT 0")
-        conn.commit()
+    def _persist_quality_file_to_db(self, audit_data: Dict):
+        """
+        Persist quality audit metadata for a file.
+        """
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
 
-        entity_count = audit_data.get('entity_count', audit_data.get('symbol_count', 0))
-        file_size = audit_data.get('file_size', 0)
+            # Ensure entity_count and file_size columns exist
+            cursor.execute("PRAGMA table_info(quality_files)")
+            cols = [r[1] for r in cursor.fetchall()]
+            if 'entity_count' not in cols:
+                cursor.execute("ALTER TABLE quality_files ADD COLUMN entity_count INTEGER DEFAULT 0")
+            if 'file_size' not in cols:
+                cursor.execute("ALTER TABLE quality_files ADD COLUMN file_size INTEGER DEFAULT 0")
+            conn.commit()
 
-        cursor.execute("""
-            INSERT INTO quality_files (
-                project_id, file_path, language,
-                quality_score, complexity, symbol_count,
-                dependency_count, entity_count, file_size, last_audited
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(project_id, file_path) DO UPDATE SET
-                language=excluded.language,
-                quality_score=excluded.quality_score,
-                complexity=excluded.complexity,
-                symbol_count=excluded.symbol_count,
-                dependency_count=excluded.dependency_count,
-                entity_count=excluded.entity_count,
-                file_size=excluded.file_size,
-                last_audited=excluded.last_audited
-        """, (
-            audit_data['project_id'],
-            audit_data['file_path'],
-            audit_data['language'],
-            audit_data['quality_score'],
-            audit_data['complexity'],
-            audit_data['symbol_count'],
-            audit_data['dependency_count'],
-            entity_count,
-            file_size,
-            audit_data['last_audited']
-        ))
-        conn.commit()
-        conn.close()
+            entity_count = audit_data.get('entity_count', audit_data.get('symbol_count', 0))
+            file_size = audit_data.get('file_size', 0)
+
+            cursor.execute("""
+                INSERT INTO quality_files (
+                    project_id, file_path, language,
+                    quality_score, complexity, symbol_count,
+                    dependency_count, entity_count, file_size, last_audited
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(project_id, file_path) DO UPDATE SET
+                    language=excluded.language,
+                    quality_score=excluded.quality_score,
+                    complexity=excluded.complexity,
+                    symbol_count=excluded.symbol_count,
+                    dependency_count=excluded.dependency_count,
+                    entity_count=excluded.entity_count,
+                    file_size=excluded.file_size,
+                    last_audited=excluded.last_audited
+            """, (
+                audit_data['project_id'],
+                audit_data['file_path'],
+                audit_data['language'],
+                audit_data['quality_score'],
+                audit_data['complexity'],
+                audit_data['symbol_count'],
+                audit_data['dependency_count'],
+                entity_count,
+                file_size,
+                audit_data['last_audited']
+            ))
+            conn.commit()
             conn.close()
         except Exception as e:
             print(f"[GitEngine] Error persisting audit data for {audit_data['file_path']}: {e}", file=sys.stderr, flush=True)

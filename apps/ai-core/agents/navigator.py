@@ -88,6 +88,27 @@ class NavigatorAgent:
     def _tokenize(self, text: str) -> Set[str]:
         return set(t.lower() for t in text.split() if t.isalpha())
 
+    def _partial_match_score(self, query_tokens: Set[str], text: str) -> int:
+        """Score text against query tokens with partial/stem matching."""
+        score = 0
+        text_lower = text.lower()
+        text_parts = set(text_lower.replace('/', ' ').replace('\\', ' ')
+                         .replace('_', ' ').replace('.', ' ').split())
+        for qtoken in query_tokens:
+            for tpart in text_parts:
+                if not tpart:
+                    continue
+                # Exact match
+                if qtoken == tpart:
+                    score += 3
+                # Query token is a prefix of text part (e.g., "auth" in "authentication")
+                elif tpart.startswith(qtoken) or qtoken.startswith(tpart):
+                    score += 2
+                # Substring match
+                elif qtoken in tpart or tpart in qtoken:
+                    score += 1
+        return score
+
     def _semantic_search(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
         if not self.archive_index:
             return self._fallback_search(query, limit)
@@ -98,12 +119,19 @@ class NavigatorAgent:
             purpose = entry.get('purpose_summary', '')
             tokens = self._tokenize(purpose)
             score = len(query_tokens.intersection(tokens))
+            # Also try partial matching on purpose text
+            if score == 0:
+                score = self._partial_match_score(query_tokens, purpose)
             if score > 0:
                 scored.append({
                     'file_path': entry.get('file_path'),
                     'purpose_summary': purpose,
                     'score': score
                 })
+
+        # If archive search found nothing, fall back to DB search
+        if not scored:
+            return self._fallback_search(query, limit)
 
         scored.sort(key=lambda item: item['score'], reverse=True)
         return scored[:limit]
@@ -116,6 +144,7 @@ class NavigatorAgent:
             cursor = conn.cursor()
             matches = []
             query_lower = query.lower()
+            query_tokens = self._tokenize(query)
 
             # Try semantic_artifacts table first if it exists
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='semantic_artifacts'")
@@ -128,12 +157,34 @@ class NavigatorAgent:
                 )
                 for row in cursor.fetchall():
                     purpose = row['purpose_summary'] or ''
-                    score = purpose.lower().count(query_lower)
+                    score = self._partial_match_score(query_tokens, purpose)
                     if score > 0:
                         matches.append({'file_path': row['file_path'], 'purpose_summary': purpose, 'score': score})
 
-            # Fall back to quality_files if no matches found yet
-            if not matches and self.project_id != 'global':
+            # Search core_symbols table for symbol name matches
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='core_symbols'")
+            has_symbols = cursor.fetchone() is not None
+            if has_symbols and self.project_id != 'global':
+                cursor.execute(
+                    "SELECT file_path, symbol_name, symbol_type FROM core_symbols WHERE project_id = ?",
+                    (self.project_id,)
+                )
+                symbol_matches: Dict[str, Dict[str, Any]] = {}
+                for row in cursor.fetchall():
+                    sym_name = row['symbol_name'] or ''
+                    sym_score = self._partial_match_score(query_tokens, sym_name)
+                    if sym_score > 0:
+                        fp = row['file_path']
+                        if fp not in symbol_matches or sym_score > symbol_matches[fp]['score']:
+                            symbol_matches[fp] = {
+                                'file_path': fp,
+                                'purpose_summary': f'{row["symbol_type"]} {sym_name}',
+                                'score': sym_score
+                            }
+                matches.extend(symbol_matches.values())
+
+            # Fall back to quality_files for path-based matching
+            if self.project_id != 'global':
                 cursor.execute(
                     "SELECT file_path, language FROM quality_files WHERE project_id = ?",
                     (self.project_id,)
@@ -141,14 +192,10 @@ class NavigatorAgent:
                 for row in cursor.fetchall():
                     path = row['file_path'] or ''
                     lang = row['language'] or ''
-                    # Search on file path components and language
-                    search_text = f"{path} {lang}"
-                    score = search_text.lower().count(query_lower)
-                    # Also give bonus for path component matches
-                    path_parts = path.replace('/', ' ').replace('\\', ' ').replace('.', ' ').lower().split()
-                    for part in path_parts:
-                        if part and (part in query_lower or query_lower in part):
-                            score += 2
+                    # Check if already matched via symbols
+                    if any(m['file_path'] == path for m in matches):
+                        continue
+                    score = self._partial_match_score(query_tokens, f"{path} {lang}")
                     if score > 0:
                         matches.append({'file_path': path, 'purpose_summary': f'[{lang}] {path}', 'score': score})
 
@@ -160,24 +207,81 @@ class NavigatorAgent:
         finally:
             conn.close()
 
-    def find_implementation(self, query: str, limit: int = 5) -> Dict[str, Any]:
-        print(f"[NavigatorAgent] Running find_implementation for query: {query}", file=sys.stderr)
+    def _get_all_files(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Return all files from quality_files when no query is given."""
+        if not os.path.exists(self.db_path) or self.project_id == 'global':
+            return []
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT file_path, language FROM quality_files WHERE project_id = ? ORDER BY file_path LIMIT ?",
+                (self.project_id, limit)
+            )
+            return [
+                {'file_path': row['file_path'], 'purpose_summary': f'[{row["language"]}] {row["file_path"]}', 'score': 1}
+                for row in cursor.fetchall()
+            ]
+        except Exception as exc:
+            print(f"[NavigatorAgent] _get_all_files failed: {exc}", file=sys.stderr)
+            return []
+        finally:
+            conn.close()
+
+    def _get_most_depended(self, limit: int = 5) -> List[Dict[str, Any]]:
+        """Return files with the most dependents when no target is given."""
+        if not os.path.exists(self.db_path):
+            return []
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='dependencies'")
+            if not cursor.fetchone():
+                return []
+            cursor.execute(
+                "SELECT import_path, COUNT(*) as dep_count FROM dependencies "
+                "GROUP BY import_path ORDER BY dep_count DESC LIMIT ?",
+                (limit,)
+            )
+            return [dict(row) for row in cursor.fetchall()]
+        except Exception as exc:
+            print(f"[NavigatorAgent] _get_most_depended failed: {exc}", file=sys.stderr)
+            return []
+        finally:
+            conn.close()
+
+    def find_implementation(self, query: str = '', limit: int = 5) -> Dict[str, Any]:
+        print(f"[NavigatorAgent] Running find_implementation for query: {query or '(all files)'}", file=sys.stderr)
+        if not query:
+            matches = self._get_all_files(limit=limit)
+            return {'tool': 'find_implementation', 'query': '', 'matches': matches, 'auto': True}
         matches = self._semantic_search(query, limit=limit)
         return {'tool': 'find_implementation', 'query': query, 'matches': matches}
 
     def trace_lineage(
         self,
-        dataset_name: str,
+        dataset_name: str = '',
         direction: str = 'forward',
         max_steps: int = 5
     ) -> Dict[str, Any]:
-        print(f"[NavigatorAgent] Running trace_lineage for dataset: {dataset_name}", file=sys.stderr)
+        print(f"[NavigatorAgent] Running trace_lineage for dataset: {dataset_name or '(all)'}", file=sys.stderr)
         if not os.path.exists(self.db_path):
             return {'tool': 'trace_lineage', 'paths': []}
 
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
+
+            # If no dataset specified, return all lineage edges for the project
+            if not dataset_name:
+                cursor.execute(
+                    "SELECT source_dataset, target_dataset, source_file, line_range FROM data_lineage_edges "
+                    "WHERE project_id = ? ORDER BY source_dataset LIMIT ?",
+                    (self.project_id, max_steps)
+                )
+                paths = [dict(row) for row in cursor.fetchall()]
+                return {'tool': 'trace_lineage', 'direction': direction, 'dataset': '', 'paths': paths, 'auto': True}
+
             direction = direction.lower()
             visited = set()
             queue = [dataset_name]
@@ -216,14 +320,31 @@ class NavigatorAgent:
         finally:
             conn.close()
 
-    def blast_radius(self, target_file: str, max_depth: int = 3) -> Dict[str, Any]:
-        print(f"[NavigatorAgent] Running blast_radius for file: {target_file}", file=sys.stderr)
+    def blast_radius(self, target_file: str = '', max_depth: int = 3) -> Dict[str, Any]:
+        print(f"[NavigatorAgent] Running blast_radius for file: {target_file or '(no target, showing overview)'}", file=sys.stderr)
         if not os.path.exists(self.db_path):
             return {'tool': 'blast_radius', 'impacted_files': []}
 
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
+
+            # If no target given, show most-depended-upon files as overview
+            if not target_file:
+                most_depended = self._get_most_depended(limit=10)
+                return {
+                    'tool': 'blast_radius',
+                    'target_file': '',
+                    'impacted_files': [
+                        {'file_path': d['import_path'], 'depth': 0, 'depends_on': ''}
+                        for d in most_depended
+                    ],
+                    'risk_score': 0.0,
+                    'classification': 'overview',
+                    'auto': True,
+                    'message': 'No target specified. Showing most-imported files in the project. Enter a file path to analyze its blast radius.'
+                }
+
             impacted = []
             visited = set()
             frontier = [(target_file, 1)]
@@ -257,14 +378,59 @@ class NavigatorAgent:
         finally:
             conn.close()
 
-    def explain_module(self, file_path: str) -> Dict[str, Any]:
-        print(f"[NavigatorAgent] Running explain_module for file: {file_path}", file=sys.stderr)
+    def explain_module(self, file_path: str = '') -> Dict[str, Any]:
+        print(f"[NavigatorAgent] Running explain_module for file: {file_path or '(all files)'}", file=sys.stderr)
         if not os.path.exists(self.db_path):
             return {'tool': 'explain_module', 'file_path': file_path, 'summary': ''}
 
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
+
+            # If no file specified, list all project files with symbol counts
+            if not file_path:
+                files = self._get_all_files(limit=50)
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='core_symbols'")
+                has_symbols = cursor.fetchone() is not None
+                if has_symbols and self.project_id != 'global':
+                    for f in files:
+                        cursor.execute(
+                            "SELECT COUNT(*) as cnt FROM core_symbols WHERE project_id = ? AND file_path = ?",
+                            (self.project_id, f['file_path'])
+                        )
+                        row = cursor.fetchone()
+                        f['symbol_count'] = row['cnt'] if row else 0
+                # Build a language breakdown summary
+                lang_counts: Dict[str, int] = {}
+                for f in files:
+                    lang = f.get('purpose_summary', '')
+                    if lang.startswith('['):
+                        lang = lang[1:lang.index(']')]
+                    else:
+                        lang = f.get('language', 'Unknown')
+                    lang_counts[lang] = lang_counts.get(lang, 0) + 1
+
+                lang_summary = ', '.join(f'{c} {lang}' for lang, c in sorted(lang_counts.items(), key=lambda x: -x[1])[:6])
+
+                top_files = sorted(
+                    [f for f in files if f.get('symbol_count', 0) > 0],
+                    key=lambda x: -x['symbol_count']
+                )[:5]
+                top_summary = '; '.join(f'{f["file_path"]} ({f["symbol_count"]} syms)' for f in top_files)
+
+                summary_parts = [f'{len(files)} files across {len(lang_counts)} languages: {lang_summary}.']
+                if top_summary:
+                    summary_parts.append(f' Top by symbols: {top_summary}.')
+                summary_parts.append(' Click any file below for details.')
+
+                return {
+                    'tool': 'explain_module',
+                    'file_path': '',
+                    'summary': ' '.join(summary_parts),
+                    'files': files,
+                    'auto': True
+                }
+
             cursor.execute(
                 "SELECT purpose_summary, docstring_summary, drift_notes, has_doc_drift "
                 "FROM semantic_artifacts WHERE project_id = ? AND file_path = ?",
@@ -319,13 +485,15 @@ class NavigatorAgent:
     ) -> Dict[str, Any]:
         tool_name = tool_name.lower()
         if tool_name == 'find_implementation':
-            return self.find_implementation(query or '')
+            q = query or target or ''
+            limit = 50 if not q else max(5, max_depth * 5)
+            return self.find_implementation(query=q, limit=limit)
         if tool_name == 'trace_lineage':
-            return self.trace_lineage(target or query or '', direction=direction, max_steps=max_depth)
+            return self.trace_lineage(dataset_name=target or query or '', direction=direction, max_steps=max_depth)
         if tool_name == 'blast_radius':
-            return self.blast_radius(target or query or '', max_depth=max_depth)
+            return self.blast_radius(target_file=target or query or '', max_depth=max_depth)
         if tool_name == 'explain_module':
-            return self.explain_module(target or query or '')
+            return self.explain_module(file_path=target or query or '')
         return {'tool': tool_name, 'error': 'Unknown tool'}
 
     def __call__(self, state: Dict[str, Any]) -> Dict[str, Any]:
