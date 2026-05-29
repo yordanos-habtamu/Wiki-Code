@@ -4,7 +4,6 @@ Diagnostic script to check why Code Traverser might not be showing files.
 """
 
 import sqlite3
-import json
 import sys
 import os
 
@@ -115,7 +114,7 @@ def check_git_changes(project_id):
         """, (project_id,))
         
         commits = cursor.fetchall()
-        print(f"\nSample commits:")
+        print("\nSample commits:")
         for c in commits:
             print(f"  {c['commit_hash'][:8]}: {c['file_count']} files")
     
@@ -125,7 +124,7 @@ def check_git_changes(project_id):
 def test_topology_api(project_id):
     """Simulate the topology API call."""
     print("\n" + "=" * 70)
-    print(f"SIMULATING TOPOLOGY API CALL")
+    print("SIMULATING TOPOLOGY API CALL")
     print("=" * 70)
     
     conn = sqlite3.connect(DB_PATH)
@@ -166,7 +165,7 @@ def test_topology_api(project_id):
         }
         nodes.append(node)
     
-    print(f"\nSample nodes:")
+    print("\nSample nodes:")
     for node in nodes[:3]:
         print(f"  {node['id']}")
         print(f"    Language: {node['lang']}")
@@ -183,7 +182,7 @@ def test_topology_api(project_id):
     commit_count = cursor.fetchone()['commit_count']
     
     if commit_count == 0:
-        print(f"\n⚠️  No commits found - graph will have no links")
+        print("\n⚠️  No commits found - graph will have no links")
     else:
         print(f"\n✅ {commit_count} commits available for link generation")
     

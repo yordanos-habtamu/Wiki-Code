@@ -5,7 +5,6 @@ Uses hardware/environmental signature for key derivation.
 
 import os
 import sys
-import json
 import hashlib
 import base64
 from typing import Optional

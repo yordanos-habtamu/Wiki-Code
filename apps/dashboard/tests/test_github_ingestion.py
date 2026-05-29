@@ -1,9 +1,7 @@
 import io
 import json
 import sqlite3
-import types
 
-import pytest
 import importlib.util
 import os
 

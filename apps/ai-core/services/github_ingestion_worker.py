@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import argparse
 import base64
-import hashlib
 import json
 import os
 import shutil
@@ -167,7 +166,7 @@ def main():
         log(f'Failed to prepare sandbox directory: {exc}')
         sys.exit(1)
 
-    log(f'[INGESTION]: Validating authentication tokens... [OK]')
+    log('[INGESTION]: Validating authentication tokens... [OK]')
     depth_flag = [] if clone_depth == 0 else ['--depth', str(clone_depth)]
     log(f'[INGESTION]: Cloning remote repository layers asynchronously (depth={clone_depth if clone_depth > 0 else "full"})...')
 

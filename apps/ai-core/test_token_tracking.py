@@ -5,7 +5,6 @@ Validates token usage logging, budget tracking, and provider metrics.
 
 import os
 import sys
-import json
 import tempfile
 import shutil
 import sqlite3
@@ -142,7 +141,7 @@ def test_token_usage_repository():
         # Test 5: Get recent usage
         recent = repo.get_recent_usage(limit=2)
         assert len(recent) == 2, f"Expected 2 recent records, got {len(recent)}"
-        print(f"✓ Recent usage retrieval works", file=sys.stderr)
+        print("✓ Recent usage retrieval works", file=sys.stderr)
         
         # Test 6: Clear old data
         # Insert an old record
@@ -261,7 +260,7 @@ def test_token_tracking_middleware():
         assert metrics[0]["provider"] == "mock-provider"
         assert metrics[0]["request_count"] == 3
         assert metrics[0]["total_tokens"] == 450
-        print(f"✓ Provider metrics aggregation works", file=sys.stderr)
+        print("✓ Provider metrics aggregation works", file=sys.stderr)
         
         print("✓ All TokenTrackingMiddleware tests passed", file=sys.stderr)
         
@@ -297,7 +296,7 @@ def test_token_usage_record():
         timestamp=custom_time
     )
     assert record2.timestamp == custom_time
-    print(f"✓ Custom timestamp accepted", file=sys.stderr)
+    print("✓ Custom timestamp accepted", file=sys.stderr)
     
     # Test 3: Data integrity
     assert record1.prompt_tokens == 100

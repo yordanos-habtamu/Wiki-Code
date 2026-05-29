@@ -12,7 +12,7 @@ import sys
 import os
 import uuid
 from datetime import datetime, timezone
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional
 
 
 class GitExtractionEngine:
@@ -312,7 +312,7 @@ class GitExtractionEngine:
         # Get commit log with structured format
         log_output = self._run_git_command([
             'log',
-            f'--format=%H|%an|%ai|%s',
+            '--format=%H|%an|%ai|%s',
             f'-{limit}',
             branch
         ])
@@ -948,12 +948,12 @@ if __name__ == "__main__":
             print(json.dumps(result, indent=2))
         
         elif args.action == "scan-all":
-            print(f"\n[Scan-All] Starting full repository scan", file=sys.stderr, flush=True)
+            print("\n[Scan-All] Starting full repository scan", file=sys.stderr, flush=True)
             print(f"[Scan-All] Project ID: {args.project_id}", file=sys.stderr, flush=True)
             print(f"[Scan-All] Repository: {repo_path}", file=sys.stderr, flush=True)
             
             # Discover branches
-            print(f"[10%] Discovering branches...", file=sys.stderr, flush=True)
+            print("[10%] Discovering branches...", file=sys.stderr, flush=True)
             branches = engine.discover_branches()
             print(f"[20%] Found {branches['total_local']} branches", file=sys.stderr, flush=True)
             
@@ -969,21 +969,21 @@ if __name__ == "__main__":
                 if commits:
                     all_commits.extend(commits)
             
-            print(f"[65%] Branch profiling complete", file=sys.stderr, flush=True)
+            print("[65%] Branch profiling complete", file=sys.stderr, flush=True)
             
             # Analyze recent commits for file changes (focus on main branch)
-            print(f"[70%] Analyzing file change metadata...", file=sys.stderr, flush=True)
+            print("[70%] Analyzing file change metadata...", file=sys.stderr, flush=True)
             main_commits = engine.profile_commit_history("main", min(args.limit, 10))
             for commit_data in main_commits[:5]:  # Analyze top 5 commits
                 commit_hash = commit_data['commit_hash']
                 print(f"[75%] Processing commit {commit_data['short_hash']}...", file=sys.stderr, flush=True)
                 diff_result = engine.analyze_commit_diff(commit_hash)
             
-            print(f"[85%] File change analysis complete", file=sys.stderr, flush=True)
+            print("[85%] File change analysis complete", file=sys.stderr, flush=True)
 
             # Audit discovered files to populate `quality_files` (project-scoped)
             try:
-                print(f"[86%] Auditing discovered files for quality metrics...", file=sys.stderr, flush=True)
+                print("[86%] Auditing discovered files for quality metrics...", file=sys.stderr, flush=True)
                 file_paths = set()
                 # Use files discovered across all profiled branches
                 for commit in all_commits:
@@ -1023,24 +1023,24 @@ if __name__ == "__main__":
                         except Exception as e:
                             print(f"[GitEngine] Audit failed for {fp}: {e}", file=sys.stderr, flush=True)
                 else:
-                    print(f"[86%] No files discovered to audit.", file=sys.stderr, flush=True)
+                    print("[86%] No files discovered to audit.", file=sys.stderr, flush=True)
             except Exception as e:
                 print(f"[GitEngine] Error during auditing pass: {e}", file=sys.stderr, flush=True)
 
             # Build the symbol and lineage knowledge graph
             try:
-                print(f"[92%] Building knowledge graph...", file=sys.stderr, flush=True)
+                print("[92%] Building knowledge graph...", file=sys.stderr, flush=True)
                 engine.build_knowledge_graph()
-                print(f"[94%] Knowledge graph built", file=sys.stderr, flush=True)
+                print("[94%] Knowledge graph built", file=sys.stderr, flush=True)
             except Exception as e:
                 print(f"[GitEngine] Knowledge graph build failed: {e}", file=sys.stderr, flush=True)
             
             # Generate time-series analytics
-            print(f"[90%] Computing time-series analytics...", file=sys.stderr, flush=True)
+            print("[90%] Computing time-series analytics...", file=sys.stderr, flush=True)
             time_series = engine.get_branch_time_series("main", args.limit)
             
-            print(f"[95%] Aggregating metrics...", file=sys.stderr, flush=True)
-            print(f"[100%] Scan complete!", file=sys.stderr, flush=True)
+            print("[95%] Aggregating metrics...", file=sys.stderr, flush=True)
+            print("[100%] Scan complete!", file=sys.stderr, flush=True)
             
             # Output final JSON summary
             print(json.dumps({
@@ -1053,16 +1053,16 @@ if __name__ == "__main__":
             }, indent=2))
         
         elif args.action == "audit-single":
-            print(f"\n[Audit] Starting single file audit", file=sys.stderr, flush=True)
+            print("\n[Audit] Starting single file audit", file=sys.stderr, flush=True)
             print(f"[Audit] Project ID: {args.project_id}", file=sys.stderr, flush=True)
             print(f"[Audit] File: {args.target_file}", file=sys.stderr, flush=True)
             
-            print(f"[20%] Locating file in repository...", file=sys.stderr, flush=True)
+            print("[20%] Locating file in repository...", file=sys.stderr, flush=True)
             audit_result = engine.audit_file(args.target_file)
-            print(f"[40%] Parsing abstract syntax tree...", file=sys.stderr, flush=True)
-            print(f"[60%] Tracking symbols and dependencies...", file=sys.stderr, flush=True)
-            print(f"[80%] Computing quality metrics...", file=sys.stderr, flush=True)
-            print(f"[100%] Audit complete!", file=sys.stderr, flush=True)
+            print("[40%] Parsing abstract syntax tree...", file=sys.stderr, flush=True)
+            print("[60%] Tracking symbols and dependencies...", file=sys.stderr, flush=True)
+            print("[80%] Computing quality metrics...", file=sys.stderr, flush=True)
+            print("[100%] Audit complete!", file=sys.stderr, flush=True)
             
             # Output audit results
             print(json.dumps({

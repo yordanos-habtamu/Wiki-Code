@@ -149,7 +149,7 @@ class TestComprehensionGraph(unittest.TestCase):
             self.assertGreater(len(final_state.reasoning_steps), 0)
             self.assertGreater(final_state.current_iteration, 0)
             
-            print(f"✓ Graph executed successfully", file=sys.stderr)
+            print("✓ Graph executed successfully", file=sys.stderr)
             print(f"  Iterations: {final_state.current_iteration}", file=sys.stderr)
             print(f"  Reasoning steps: {len(final_state.reasoning_steps)}", file=sys.stderr)
             print(f"  Abstracts retrieved: {len(final_state.retrieved_abstracts)}", file=sys.stderr)
@@ -177,7 +177,7 @@ class TestComprehensionGraph(unittest.TestCase):
             # Even if middleware isn't fully initialized, the graph should complete
             self.assertIsInstance(final_state, GraphState)
             
-            print(f"✓ Budget enforcement test completed", file=sys.stderr)
+            print("✓ Budget enforcement test completed", file=sys.stderr)
             print(f"  Final iteration: {final_state.current_iteration}", file=sys.stderr)
             print(f"  Done condition: {final_state.done_condition}", file=sys.stderr)
             

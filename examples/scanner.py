@@ -1,7 +1,4 @@
-import os
-import sys
 from collections import defaultdict
-from path import Path
 
 class CodeScanner:
     def __init__(self, root_dir):

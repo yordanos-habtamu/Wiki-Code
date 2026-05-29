@@ -3,10 +3,8 @@ LLM Router - Unified provider abstraction layer.
 Routes completion requests through standardized interface with provider decoupling.
 """
 
-import os
 import sys
 import time
-import json
 import requests
 from typing import Dict, Any, Optional
 from dataclasses import dataclass, field

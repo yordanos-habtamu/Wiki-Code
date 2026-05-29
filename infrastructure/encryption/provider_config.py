@@ -9,7 +9,6 @@ Handles loading, parsing, and decrypting provider credentials from:
 import os
 import sys
 import json
-import sqlite3
 from typing import Dict, Any, Optional
 from infrastructure.encryption.credential_encryptor import CredentialEncryptor
 

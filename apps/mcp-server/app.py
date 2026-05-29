@@ -5,8 +5,7 @@ Exposes structural codebase queries, semantic searches, and token telemetry.
 
 import sys
 import os
-import json
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 import importlib.util
 
 # CRITICAL: Redirect all stdout to stderr to prevent JSON-RPC stream corruption

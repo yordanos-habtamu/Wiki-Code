@@ -5,7 +5,7 @@ Manages execution state, conditional transitions, and token budget enforcement.
 
 import os
 import sys
-from typing import Literal, Dict
+from typing import Dict
 import importlib.util
 
 # Add project root to path

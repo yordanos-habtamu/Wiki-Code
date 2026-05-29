@@ -32,19 +32,19 @@ def test_config_loading():
     db_path = os.path.join(project_root, 'apps', 'cli', 'hub.db')
     config = ProviderConfig(db_path=db_path)
     
-    print(f"\nConfiguration paths:", file=sys.stderr)
+    print("\nConfiguration paths:", file=sys.stderr)
     print(f"  Encrypted: {config.encrypted_path}", file=sys.stderr)
     print(f"  Plaintext: {config.plaintext_path}", file=sys.stderr)
     print(f"  Dashboard: {config.dashboard_config_path}", file=sys.stderr)
     
     # Check which files exist
-    print(f"\nFile existence:", file=sys.stderr)
+    print("\nFile existence:", file=sys.stderr)
     print(f"  Encrypted: {os.path.exists(config.encrypted_path)}", file=sys.stderr)
     print(f"  Plaintext: {os.path.exists(config.plaintext_path)}", file=sys.stderr)
     print(f"  Dashboard: {os.path.exists(config.dashboard_config_path) if config.dashboard_config_path else False}", file=sys.stderr)
     
     # Load providers
-    print(f"\nLoading providers...", file=sys.stderr)
+    print("\nLoading providers...", file=sys.stderr)
     providers = config.load_providers()
     
     if not providers:
@@ -66,7 +66,7 @@ def test_config_loading():
         print(f"    Models: {models}", file=sys.stderr)
     
     # Test validation
-    print(f"\nValidating configuration...", file=sys.stderr)
+    print("\nValidating configuration...", file=sys.stderr)
     is_valid = config.validate_config()
     
     if is_valid:
@@ -93,11 +93,11 @@ def test_llm_router():
         success = router.initialize()
         
         if success:
-            print(f"\n✅ LLMRouter initialized successfully", file=sys.stderr)
+            print("\n✅ LLMRouter initialized successfully", file=sys.stderr)
             print(f"   Available providers: {list(router.adapters.keys())}", file=sys.stderr)
             return True
         else:
-            print(f"\n❌ LLMRouter initialization failed", file=sys.stderr)
+            print("\n❌ LLMRouter initialization failed", file=sys.stderr)
             return False
     except Exception as e:
         print(f"\n❌ Error initializing LLMRouter: {e}", file=sys.stderr)
@@ -123,7 +123,7 @@ def show_dashboard_config():
             config = json.load(f)
         
         print(f"\nConfiguration file: {dashboard_config_path}", file=sys.stderr)
-        print(f"\nProviders:", file=sys.stderr)
+        print("\nProviders:", file=sys.stderr)
         
         for provider_name, provider_data in config.get('providers', {}).items():
             api_key = provider_data.get('apiKey', '')
@@ -142,7 +142,7 @@ def show_dashboard_config():
             if default_model:
                 print(f"    Default Model: {default_model}", file=sys.stderr)
         
-        print(f"\nSystem:", file=sys.stderr)
+        print("\nSystem:", file=sys.stderr)
         system = config.get('system', {})
         print(f"  Default Model: {system.get('defaultModel', '(not set)')}", file=sys.stderr)
         print(f"  Token Budget: {system.get('tokenBudget', 0)}", file=sys.stderr)
